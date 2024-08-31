@@ -1,141 +1,122 @@
 using Autofac;
 using Microsoft.CodeAnalysis;
 using NSwag;
-using Nustache.Core;
-using System;
+#if GENERATE_AUTOMAPPER
 using System.Collections.Generic;
+using System;
+using System.IO;
 using System.Linq;
-using System.Reflection;
+#endif
 
 namespace LibKubernetesGenerator
 {
     [Generator]
-    public class KubernetesClientSourceGenerator : ISourceGenerator
+    public class KubernetesClientSourceGenerator : IIncrementalGenerator
     {
-        private static object execlock = new object();
-
-        public void ExecuteInner(GeneratorExecutionContext context)
+        private static (OpenApiDocument, IContainer) BuildContainer()
         {
-            lock (execlock)
-            {
-                var swaggerfile = context.AdditionalFiles.First(f => f.Path.EndsWith("swagger.json"));
-                var swagger = OpenApiDocument.FromJsonAsync(swaggerfile.GetText().ToString()).GetAwaiter().GetResult();
-
-                context.AnalyzerConfigOptions.GetOptions(swaggerfile).TryGetValue("build_metadata.AdditionalFiles.Generator", out var generatorSetting);
-                var generators = new HashSet<string>(generatorSetting.Split(','));
-
-                var builder = new ContainerBuilder();
-
-                builder.RegisterType<ClassNameHelper>()
-                    .WithParameter(new NamedParameter(nameof(swagger), swagger))
-                    .AsSelf()
-                    .AsImplementedInterfaces()
-                    ;
-
-                builder.RegisterType<StringHelpers>()
-                    .AsImplementedInterfaces()
-                    ;
-
-                builder.RegisterType<MetaHelper>()
-                    .AsImplementedInterfaces()
-                    ;
-
-                builder.RegisterType<PluralHelper>()
-                    .WithParameter(new TypedParameter(typeof(OpenApiDocument), swagger))
-                    .AsImplementedInterfaces()
-                    ;
-
-                builder.RegisterType<GeneralNameHelper>()
-                    .AsSelf()
-                    .AsImplementedInterfaces()
-                    ;
-
-                builder.RegisterType<TypeHelper>()
-                    .AsSelf()
-                    .AsImplementedInterfaces()
-                    ;
-
-                builder.RegisterType<ParamHelper>()
-                    .AsImplementedInterfaces()
-                    ;
-
-                builder.RegisterType<UtilHelper>()
-                    .AsImplementedInterfaces()
-                    ;
-
-                builder.RegisterType<ModelExtGenerator>();
-                builder.RegisterType<ModelGenerator>();
-                builder.RegisterType<ApiGenerator>();
-                builder.RegisterType<VersionConverterGenerator>();
-                builder.RegisterType<VersionGenerator>();
-
-                var container = builder.Build();
-                // TODO move to Handlebars.Net
-                {
-                    var ch = typeof(Helpers).GetField("CustomHelpers", BindingFlags.Static | BindingFlags.NonPublic);
-                    ((Dictionary<string, Helper>)ch.GetValue(null)).Clear();
-                }
-
-                foreach (var helper in container.Resolve<IEnumerable<INustacheHelper>>())
-                {
-                    helper.RegisterHelper();
-                }
-
-
-                if (generators.Contains("api"))
-                {
-                    container.Resolve<ApiGenerator>().Generate(swagger, context);
-                }
-
-                if (generators.Contains("model"))
-                {
-                    container.Resolve<ModelGenerator>().Generate(swagger, context);
-                }
-
-                if (generators.Contains("modelext"))
-                {
-                    container.Resolve<ModelExtGenerator>().Generate(swagger, context);
-                }
-
-                if (generators.Contains("versionconverter"))
-                {
-                    container.Resolve<VersionConverterGenerator>().Generate(swagger, context);
-                }
-
-                if (generators.Contains("version"))
-                {
-                    container.Resolve<VersionGenerator>().Generate(swagger, context);
-                }
-            }
+            var swagger = OpenApiDocument.FromJsonAsync(EmbedResource.GetResource("swagger.json")).GetAwaiter().GetResult();
+            var container = BuildContainer(swagger);
+            return (swagger, container);
         }
 
-        public void Execute(GeneratorExecutionContext context)
+        private static IContainer BuildContainer(OpenApiDocument swagger)
         {
-            try
-            {
-                ExecuteInner(context);
-            }
-            catch (Exception e)
-            {
-                context.ReportDiagnostic(Diagnostic.Create(
-                    new DiagnosticDescriptor(
-                    "K8SCSG01",
-                    e.Message,
-                    e.StackTrace,
-                    "Kubernetes C# code generator",
-                    DiagnosticSeverity.Error,
-                    true), Location.None));
-            }
+            var builder = new ContainerBuilder();
+
+            builder.RegisterType<ClassNameHelper>()
+                .WithParameter(new NamedParameter(nameof(swagger), swagger))
+                .AsSelf()
+                .AsImplementedInterfaces()
+                ;
+
+            builder.RegisterType<StringHelpers>()
+                .AsImplementedInterfaces()
+                ;
+
+            builder.RegisterType<MetaHelper>()
+                .AsImplementedInterfaces()
+                ;
+
+            builder.RegisterType<PluralHelper>()
+                .WithParameter(new TypedParameter(typeof(OpenApiDocument), swagger))
+                .AsImplementedInterfaces()
+                ;
+
+            builder.RegisterType<GeneralNameHelper>()
+                .AsSelf()
+                .AsImplementedInterfaces()
+                ;
+
+            builder.RegisterType<TypeHelper>()
+                .AsSelf()
+                .AsImplementedInterfaces()
+                ;
+
+            builder.RegisterType<ParamHelper>()
+                .AsImplementedInterfaces()
+                ;
+
+            builder.RegisterType<UtilHelper>()
+                .AsImplementedInterfaces()
+                ;
+
+            builder.RegisterType<ScriptObjectFactory>()
+                ;
+
+            builder.RegisterType<ModelExtGenerator>();
+            builder.RegisterType<ModelGenerator>();
+            builder.RegisterType<ApiGenerator>();
+            builder.RegisterType<VersionConverterStubGenerator>();
+            builder.RegisterType<VersionConverterAutoMapperGenerator>();
+            builder.RegisterType<VersionGenerator>();
+
+            return builder.Build();
         }
 
-        public void Initialize(GeneratorInitializationContext context)
+        public void Initialize(IncrementalGeneratorInitializationContext generatorContext)
         {
-#if DEBUG
-        // if (!Debugger.IsAttached)
-        // {
-        //     Debugger.Launch();
-        // }
+#if GENERATE_BASIC
+            generatorContext.RegisterPostInitializationOutput(ctx =>
+            {
+                var (swagger, container) = BuildContainer();
+
+                container.Resolve<VersionGenerator>().Generate(swagger, ctx);
+
+                container.Resolve<ModelGenerator>().Generate(swagger, ctx);
+                container.Resolve<ModelExtGenerator>().Generate(swagger, ctx);
+                container.Resolve<VersionConverterStubGenerator>().Generate(swagger, ctx);
+                container.Resolve<ApiGenerator>().Generate(swagger, ctx);
+            });
 #endif
-    }
+
+#if GENERATE_AUTOMAPPER
+            var automappersrc = generatorContext.CompilationProvider.Select((c, _) => c.SyntaxTrees.First(s => PathSuffixMath(s.FilePath, "AutoMapper/VersionConverter.cs")));
+            generatorContext.RegisterSourceOutput(automappersrc, (ctx, srctree) =>
+            {
+                var (swagger, container) = BuildContainer();
+                container.Resolve<VersionConverterAutoMapperGenerator>().Generate(swagger, ctx, srctree);
+            });
+#endif
+        }
+
+#if GENERATE_AUTOMAPPER
+        private IEnumerable<string> PathSplit(string path)
+        {
+            var p = path;
+
+            while (!string.IsNullOrEmpty(p))
+            {
+                yield return Path.GetFileName(p);
+                p = Path.GetDirectoryName(p);
+            }
+        }
+
+        private bool PathSuffixMath(string path, string suffix)
+        {
+            var s = PathSplit(suffix).ToList();
+            return PathSplit(path).Take(s.Count).SequenceEqual(s);
+        }
+#endif
     }
 }

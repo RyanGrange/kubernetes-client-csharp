@@ -4,6 +4,7 @@ using k8s.KubeConfigModels;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.IO.Abstractions;
 using System.IO.Abstractions.TestingHelpers;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -33,6 +34,8 @@ namespace k8s.Tests
         /// <summary>
         ///     Check if host is properly loaded, per context
         /// </summary>
+        /// <param name="context">Context to retreive the configuration</param>
+        /// <param name="host">Host to check</param>
         [Theory]
         [InlineData("federal-context", "https://horse.org:4443")]
         [InlineData("queen-anne-context", "https://pig.org:443")]
@@ -46,6 +49,8 @@ namespace k8s.Tests
         /// <summary>
         ///     Check if namespace is properly loaded, per context
         /// </summary>
+        /// <param name="context">Context to retreive the configuration</param>
+        /// <param name="namespace">Namespace to check</param>
         [Theory]
         [InlineData("federal-context", "chisel-ns")]
         [InlineData("queen-anne-context", "saw-ns")]
@@ -59,8 +64,8 @@ namespace k8s.Tests
         /// <summary>
         ///     Checks if user-based token is loaded properly from the config file, per context
         /// </summary>
-        /// <param name="context"></param>
-        /// <param name="token"></param>
+        /// <param name="context">Context to retreive the configuration</param>
+        /// <param name="token">User authentication token</param>
         [Theory]
         [InlineData("queen-anne-context", "black-token")]
         public void ContextUserToken(string context, string token)
@@ -92,7 +97,7 @@ namespace k8s.Tests
         /// <summary>
         ///     Checks for loading of elliptical curve keys
         /// </summary>
-        /// <param name="context"></param>
+        /// <param name="context">Context to retreive the configuration</param>
         [Theory]
         [InlineData("elliptic-context")]
         public void ContextEllipticKey(string context)
@@ -131,6 +136,20 @@ namespace k8s.Tests
             Assert.NotNull(cfg.Host);
             Assert.Null(cfg.SslCaCerts);
             Assert.True(cfg.SkipTlsVerify);
+        }
+
+        /// <summary>
+        ///     Checks that a KubeConfigException is not thrown when no certificate-authority-data is set and user do not require tls
+        ///     skip
+        /// </summary>
+        [Fact]
+        public void CheckClusterTlsNoSkipCorrectness()
+        {
+            var fi = new FileInfo("assets/kubeconfig.tls-no-skip.yml");
+            var cfg = KubernetesClientConfiguration.BuildConfigFromConfigFile(fi);
+            Assert.NotNull(cfg.Host);
+            Assert.Null(cfg.SslCaCerts);
+            Assert.False(cfg.SkipTlsVerify);
         }
 
         /// <summary>
@@ -323,6 +342,17 @@ namespace k8s.Tests
         }
 
         /// <summary>
+        ///     Make sure that TlsServerName is present
+        /// </summary>
+        [Fact]
+        public void TlsServerName()
+        {
+            var fi = new FileInfo("assets/kubeconfig.tls-servername.yml");
+            var cfg = KubernetesClientConfiguration.BuildConfigFromConfigFile(fi);
+            Assert.Equal("pony", cfg.TlsServerName);
+        }
+
+        /// <summary>
         ///     Checks config could work well when current-context is not set but masterUrl is set. #issue 24
         /// </summary>
         [Fact]
@@ -383,11 +413,10 @@ namespace k8s.Tests
         [Fact]
         public void DefaultConfigurationAsStreamLoaded()
         {
-            using (var stream = File.OpenRead("assets/kubeconfig.yml"))
-            {
-                var cfg = KubernetesClientConfiguration.BuildConfigFromConfigFile(stream);
-                Assert.NotNull(cfg.Host);
-            }
+            using var stream = File.OpenRead("assets/kubeconfig.yml");
+
+            var cfg = KubernetesClientConfiguration.BuildConfigFromConfigFile(stream);
+            Assert.NotNull(cfg.Host);
         }
 
         /// <summary>
@@ -408,7 +437,7 @@ namespace k8s.Tests
         {
             var path = Path.GetFullPath("assets/kubeconfig.cluster-extensions.yml");
 
-            var cfg = await KubernetesClientConfiguration.BuildConfigFromConfigFileAsync(new FileInfo(path)).ConfigureAwait(false);
+            _ = await KubernetesClientConfiguration.BuildConfigFromConfigFileAsync(new FileInfo(path)).ConfigureAwait(true);
         }
 
         [Fact]
@@ -537,6 +566,7 @@ namespace k8s.Tests
         public void LoadKubeConfigWithAdditionalProperties()
         {
             var txt = File.ReadAllText("assets/kubeconfig.additional-properties.yml");
+            Assert.Throws<YamlDotNet.Core.YamlException>(() => KubernetesYaml.Deserialize<K8SConfiguration>(txt, strict: true));
             var expectedCfg = KubernetesYaml.Deserialize<K8SConfiguration>(txt);
 
             var fileInfo = new FileInfo(Path.GetFullPath("assets/kubeconfig.additional-properties.yml"));
@@ -690,6 +720,31 @@ namespace k8s.Tests
             }
         }
 
+        private class FileSystemAdapter : FileSystem.IFileSystem
+        {
+            private readonly IFileSystem io;
+
+            public FileSystemAdapter(System.IO.Abstractions.IFileSystem io)
+            {
+                this.io = io;
+            }
+
+            public bool Exists(string path)
+            {
+                return io.File.Exists(path);
+            }
+
+            public Stream OpenRead(string path)
+            {
+                return io.File.OpenRead(path);
+            }
+
+            public string ReadAllText(string path)
+            {
+                return io.File.ReadAllText(path);
+            }
+        }
+
         /// <summary>
         ///    Test in cluster configuration.
         /// </summary>
@@ -709,7 +764,7 @@ namespace k8s.Tests
                 { tokenPath, new MockFileData("foo") },
                 { certPath, new MockFileData("bar") },
             });
-            using (new FileUtils.InjectedFileSystem(fileSystem))
+            using (FileSystem.With(new FileSystemAdapter(fileSystem)))
             {
                 Assert.True(KubernetesClientConfiguration.IsInCluster());
             }
@@ -733,7 +788,7 @@ namespace k8s.Tests
                 { certPath, new MockFileData("bar") },
             });
 
-            using (new FileUtils.InjectedFileSystem(fileSystem))
+            using (FileSystem.With(new FileSystemAdapter(fileSystem)))
             {
                 var config = KubernetesClientConfiguration.InClusterConfig();
                 Assert.Equal("https://other.default.svc:443/", config.Host);
@@ -760,7 +815,7 @@ namespace k8s.Tests
                 { namespacePath, new MockFileData("some namespace") },
             });
 
-            using (new FileUtils.InjectedFileSystem(fileSystem))
+            using (FileSystem.With(new FileSystemAdapter(fileSystem)))
             {
                 var config = KubernetesClientConfiguration.InClusterConfig();
                 Assert.Equal("https://kubernetes.default.svc:443/", config.Host);

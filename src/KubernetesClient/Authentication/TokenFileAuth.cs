@@ -1,8 +1,4 @@
 using System.Net.Http.Headers;
-using System.IO;
-using System.Threading;
-using System.Threading.Tasks;
-using k8s.Autorest;
 
 namespace k8s.Authentication
 {

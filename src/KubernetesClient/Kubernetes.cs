@@ -1,9 +1,6 @@
-using System.IO;
+using k8s.Authentication;
 using System.Net;
 using System.Net.Http;
-using System.Threading;
-using System.Threading.Tasks;
-using k8s.Autorest;
 
 namespace k8s
 {
@@ -47,6 +44,10 @@ namespace k8s
         private HttpClientHandler HttpClientHandler { get; set; }
 #endif
 
+#if NETSTANDARD2_1_OR_GREATER || NET5_0_OR_GREATER
+        private bool DisableHttp2 { get; set; }
+#endif
+
         /// <summary>
         /// Initializes client properties.
         /// </summary>
@@ -71,11 +72,7 @@ namespace k8s
 
             if (watch == true)
             {
-#if NETSTANDARD2_0 || NET48
-                throw new KubernetesException("watch not supported");
-#else
                 httpResponse.Content = new LineSeparatedHttpContent(httpResponse.Content, cancellationToken);
-#endif
             }
 
             try
@@ -86,7 +83,7 @@ namespace k8s
                 using (Stream stream = await httpResponse.Content.ReadAsStreamAsync().ConfigureAwait(false))
 #endif
                 {
-                    result.Body = KubernetesJson.Deserialize<T>(stream);
+                    result.Body = KubernetesJson.Deserialize<T>(stream, jsonSerializerOptions);
                 }
             }
             catch (JsonException)
@@ -99,13 +96,19 @@ namespace k8s
             return result;
         }
 
-        protected override HttpRequestMessage CreateRequest(string relativeUri, HttpMethod method, IReadOnlyDictionary<string, IReadOnlyList<string>> customHeaders)
+        protected override Task<HttpResponseMessage> SendRequest<T>(string relativeUri, HttpMethod method, IReadOnlyDictionary<string, IReadOnlyList<string>> customHeaders, T body, CancellationToken cancellationToken)
         {
-            var httpRequest = new HttpRequestMessage();
-            httpRequest.Method = method;
-            httpRequest.RequestUri = new Uri(BaseUri, relativeUri);
+            var httpRequest = new HttpRequestMessage
+            {
+                Method = method,
+                RequestUri = new Uri(BaseUri, relativeUri),
+            };
+
 #if NETSTANDARD2_1_OR_GREATER || NET5_0_OR_GREATER
-            httpRequest.Version = HttpVersion.Version20;
+            if (!DisableHttp2)
+            {
+                httpRequest.Version = HttpVersion.Version20;
+            }
 #endif
             // Set Headers
             if (customHeaders != null)
@@ -117,10 +120,18 @@ namespace k8s
                 }
             }
 
-            return httpRequest;
+            if (body != null)
+            {
+                var requestContent = KubernetesJson.Serialize(body, jsonSerializerOptions);
+                httpRequest.Content = new StringContent(requestContent, System.Text.Encoding.UTF8);
+                httpRequest.Content.Headers.ContentType = GetHeader(body);
+                return SendRequestRaw(requestContent, httpRequest, cancellationToken);
+            }
+
+            return SendRequestRaw("", httpRequest, cancellationToken);
         }
 
-        protected override async Task<HttpResponseMessage> SendRequestRaw(string requestContent, HttpRequestMessage httpRequest, CancellationToken cancellationToken)
+        protected virtual async Task<HttpResponseMessage> SendRequestRaw(string requestContent, HttpRequestMessage httpRequest, CancellationToken cancellationToken)
         {
             if (httpRequest == null)
             {
@@ -134,6 +145,11 @@ namespace k8s
                 await Credentials.ProcessHttpRequestAsync(httpRequest, cancellationToken).ConfigureAwait(false);
             }
 
+            if (!string.IsNullOrWhiteSpace(TlsServerName))
+            {
+                httpRequest.Headers.Host = TlsServerName;
+            }
+
             // Send Request
             cancellationToken.ThrowIfCancellationRequested();
             var httpResponse = await HttpClient.SendAsync(httpRequest, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
@@ -143,7 +159,6 @@ namespace k8s
             if (!httpResponse.IsSuccessStatusCode)
             {
                 string responseContent = null;
-                var ex = new HttpOperationException(string.Format("Operation returned an invalid status code '{0}'", statusCode));
                 if (httpResponse.Content != null)
                 {
                     responseContent = await httpResponse.Content.ReadAsStringAsync().ConfigureAwait(false);
@@ -153,6 +168,7 @@ namespace k8s
                     responseContent = string.Empty;
                 }
 
+                var ex = new HttpOperationException($"Operation returned an invalid status code '{statusCode}', response body {responseContent}");
                 ex.Request = new HttpRequestMessageWrapper(httpRequest, requestContent);
                 ex.Response = new HttpResponseMessageWrapper(httpResponse, responseContent);
                 httpRequest.Dispose();
@@ -187,14 +203,32 @@ namespace k8s
         /// <param name="disposing">True to release both managed and unmanaged resources; false to releases only unmanaged resources.</param>
         protected virtual void Dispose(bool disposing)
         {
-            if (!_disposed)
+            if (disposing && !_disposed)
             {
                 _disposed = true;
 
                 // Dispose the client
                 HttpClient?.Dispose();
                 HttpClient = null;
+
+                // Dispose the certificates
+                if (CaCerts is not null)
+                {
+                    foreach (var caCert in CaCerts)
+                    {
+                        caCert.Dispose();
+                    }
+
+                    CaCerts.Clear();
+                }
+
+                ClientCert?.Dispose();
+                ClientCert = null;
+
+                FirstMessageHandler?.Dispose();
                 FirstMessageHandler = null;
+
+                HttpClientHandler?.Dispose();
                 HttpClientHandler = null;
             }
         }

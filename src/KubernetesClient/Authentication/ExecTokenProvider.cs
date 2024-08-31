@@ -1,8 +1,5 @@
-using System.Net.Http.Headers;
-using System.Threading;
-using System.Threading.Tasks;
 using k8s.KubeConfigModels;
-using k8s.Autorest;
+using System.Net.Http.Headers;
 
 namespace k8s.Authentication
 {
@@ -23,12 +20,12 @@ namespace k8s.Authentication
                 return true;
             }
 
-            if (response.Status.Expiry == null)
+            if (response.Status.ExpirationTimestamp == null)
             {
                 return false;
             }
 
-            return DateTime.UtcNow.AddSeconds(30) > response.Status.Expiry;
+            return DateTime.UtcNow.AddSeconds(30) > response.Status.ExpirationTimestamp;
         }
 
         public async Task<AuthenticationHeaderValue> GetAuthenticationHeaderAsync(CancellationToken cancellationToken)

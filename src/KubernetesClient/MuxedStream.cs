@@ -1,5 +1,3 @@
-using System.IO;
-
 namespace k8s
 {
     /// <summary>
@@ -7,9 +5,9 @@ namespace k8s
     /// </summary>
     public class MuxedStream : Stream
     {
-        private ByteBuffer inputBuffer;
-        private byte? outputIndex;
-        private StreamDemuxer muxer;
+        private readonly ByteBuffer inputBuffer;
+        private readonly byte? outputIndex;
+        private readonly StreamDemuxer muxer;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="MuxedStream"/> class.

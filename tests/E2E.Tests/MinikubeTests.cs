@@ -1,22 +1,26 @@
-﻿using System;
+using ICSharpCode.SharpZipLib.Tar;
+using Json.Patch;
+using k8s.Autorest;
+using k8s.LeaderElection;
+using k8s.LeaderElection.ResourceLock;
+using k8s.Models;
+using Nito.AsyncEx;
+using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
-using Json.Patch;
-using k8s.LeaderElection;
-using k8s.LeaderElection.ResourceLock;
-using k8s.Models;
-using k8s.Autorest;
-using Nito.AsyncEx;
 using Xunit;
 
 namespace k8s.E2E
 {
+    [Collection(nameof(Onebyone))]
     public class MinikubeTests
     {
         [MinikubeFact]
@@ -25,16 +29,16 @@ namespace k8s.E2E
             var namespaceParameter = "default";
             var podName = "k8scsharp-e2e-pod";
 
-            var client = CreateClient();
+            using var client = CreateClient();
 
             void Cleanup()
             {
-                var pods = client.ListNamespacedPod(namespaceParameter);
+                var pods = client.CoreV1.ListNamespacedPod(namespaceParameter);
                 while (pods.Items.Any(p => p.Metadata.Name == podName))
                 {
                     try
                     {
-                        client.DeleteNamespacedPod(podName, namespaceParameter);
+                        client.CoreV1.DeleteNamespacedPod(podName, namespaceParameter);
                     }
                     catch (HttpOperationException e)
                     {
@@ -50,7 +54,7 @@ namespace k8s.E2E
             {
                 Cleanup();
 
-                client.CreateNamespacedPod(
+                client.CoreV1.CreateNamespacedPod(
                     new V1Pod()
                     {
                         Metadata = new V1ObjectMeta { Name = podName, },
@@ -61,7 +65,7 @@ namespace k8s.E2E
                     },
                     namespaceParameter);
 
-                var pods = client.ListNamespacedPod(namespaceParameter);
+                var pods = client.CoreV1.ListNamespacedPod(namespaceParameter);
                 Assert.Contains(pods.Items, p => p.Metadata.Name == podName);
             }
             finally
@@ -76,16 +80,16 @@ namespace k8s.E2E
             var namespaceParameter = "default";
             var podName = "k8scsharp-e2e-patch-pod";
 
-            var client = CreateClient();
+            using var client = CreateClient();
 
             void Cleanup()
             {
-                var pods = client.ListNamespacedPod(namespaceParameter);
+                var pods = client.CoreV1.ListNamespacedPod(namespaceParameter);
                 while (pods.Items.Any(p => p.Metadata.Name == podName))
                 {
                     try
                     {
-                        client.DeleteNamespacedPod(podName, namespaceParameter);
+                        client.CoreV1.DeleteNamespacedPod(podName, namespaceParameter);
                     }
                     catch (HttpOperationException e)
                     {
@@ -102,7 +106,7 @@ namespace k8s.E2E
                 {
                     Cleanup();
 
-                    client.CreateNamespacedPod(
+                    client.CoreV1.CreateNamespacedPod(
                         new V1Pod()
                         {
                             Metadata = new V1ObjectMeta { Name = podName, Labels = new Dictionary<string, string> { { "place", "holder" }, }, },
@@ -115,7 +119,7 @@ namespace k8s.E2E
 
                     // patch
                     {
-                        var pod = client.ListNamespacedPod(namespaceParameter).Items.First(p => p.Metadata.Name == podName);
+                        var pod = client.CoreV1.ListNamespacedPod(namespaceParameter).Items.First(p => p.Metadata.Name == podName);
                         var old = JsonSerializer.SerializeToDocument(pod);
 
                         var newlabels = new Dictionary<string, string>(pod.Metadata.Labels) { ["test"] = "test-jsonpatch" };
@@ -123,12 +127,12 @@ namespace k8s.E2E
 
                         var expected = JsonSerializer.SerializeToDocument(pod);
                         var patch = old.CreatePatch(expected);
-                        client.PatchNamespacedPod(new V1Patch(patch, V1Patch.PatchType.JsonPatch), pod.Metadata.Name, "default");
+                        client.CoreV1.PatchNamespacedPod(new V1Patch(patch, V1Patch.PatchType.JsonPatch), pod.Metadata.Name, "default");
                     }
 
                     // refresh
                     {
-                        var pod = client.ListNamespacedPod(namespaceParameter).Items.First(p => p.Metadata.Name == podName);
+                        var pod = client.CoreV1.ListNamespacedPod(namespaceParameter).Items.First(p => p.Metadata.Name == podName);
                         Assert.Equal("test-jsonpatch", pod.Labels()["test"]);
                     }
                 }
@@ -138,7 +142,7 @@ namespace k8s.E2E
                 }
 
                 {
-                    client.CreateNamespacedPod(
+                    client.CoreV1.CreateNamespacedPod(
                         new V1Pod()
                         {
                             Metadata = new V1ObjectMeta { Name = podName, Labels = new Dictionary<string, string> { { "place", "holder" }, }, },
@@ -150,7 +154,7 @@ namespace k8s.E2E
                         namespaceParameter);
 
 
-                    var pod = client.ListNamespacedPod(namespaceParameter).Items.First(p => p.Metadata.Name == podName);
+                    var pod = client.CoreV1.ListNamespacedPod(namespaceParameter).Items.First(p => p.Metadata.Name == podName);
 
                     var patchStr = @"
 {
@@ -161,12 +165,12 @@ namespace k8s.E2E
     }
 }";
 
-                    client.PatchNamespacedPod(new V1Patch(patchStr, V1Patch.PatchType.MergePatch), pod.Metadata.Name, "default");
+                    client.CoreV1.PatchNamespacedPod(new V1Patch(patchStr, V1Patch.PatchType.MergePatch), pod.Metadata.Name, "default");
 
                     Assert.False(pod.Labels().ContainsKey("test"));
 
                     // refresh
-                    pod = client.ListNamespacedPod(namespaceParameter).Items.First(p => p.Metadata.Name == podName);
+                    pod = client.CoreV1.ListNamespacedPod(namespaceParameter).Items.First(p => p.Metadata.Name == podName);
 
                     Assert.Equal("test-mergepatch", pod.Labels()["test"]);
                 }
@@ -180,9 +184,9 @@ namespace k8s.E2E
         [MinikubeFact]
         public async Task WatcherIntegrationTest()
         {
-            var kubernetes = CreateClient();
+            using var kubernetes = CreateClient();
 
-            var job = await kubernetes.CreateNamespacedJobAsync(
+            var job = await kubernetes.BatchV1.CreateNamespacedJobAsync(
                 new V1Job()
                 {
                     ApiVersion = "batch/v1",
@@ -219,7 +223,7 @@ namespace k8s.E2E
             var started = new AsyncManualResetEvent();
             var connectionClosed = new AsyncManualResetEvent();
 
-            var watcher = kubernetes.ListNamespacedJobWithHttpMessagesAsync(
+            var watcher = kubernetes.BatchV1.ListNamespacedJobWithHttpMessagesAsync(
                 job.Metadata.NamespaceProperty,
                 fieldSelector: $"metadata.name={job.Metadata.Name}",
                 resourceVersion: job.Metadata.ResourceVersion,
@@ -239,7 +243,7 @@ namespace k8s.E2E
             await Task.WhenAny(connectionClosed.WaitAsync(), Task.Delay(TimeSpan.FromMinutes(3))).ConfigureAwait(false);
             Assert.True(connectionClosed.IsSet);
 
-            var st = await kubernetes.DeleteNamespacedJobAsync(
+            var st = await kubernetes.BatchV1.DeleteNamespacedJobAsync(
                 job.Metadata.Name,
                 job.Metadata.NamespaceProperty,
                 new V1DeleteOptions() { PropagationPolicy = "Foreground" }).ConfigureAwait(false);
@@ -248,12 +252,12 @@ namespace k8s.E2E
         [MinikubeFact]
         public void LeaderIntegrationTest()
         {
-            var client = CreateClient();
+            using var client = CreateClient();
             var namespaceParameter = "default";
 
             void Cleanup()
             {
-                var endpoints = client.ListNamespacedEndpoints(namespaceParameter);
+                var endpoints = client.CoreV1.ListNamespacedEndpoints(namespaceParameter);
 
                 void DeleteEndpoints(string name)
                 {
@@ -261,7 +265,7 @@ namespace k8s.E2E
                     {
                         try
                         {
-                            client.DeleteNamespacedEndpoints(name, namespaceParameter);
+                            client.CoreV1.DeleteNamespacedEndpoints(name, namespaceParameter);
                         }
                         catch (HttpOperationException e)
                         {
@@ -299,7 +303,7 @@ namespace k8s.E2E
                     le.OnStartedLeading += () => leader1acq.Set();
                     le.OnStoppedLeading += () => leader1lose.Set();
 
-                    tasks.Add(le.RunAsync(cts.Token));
+                    tasks.Add(le.RunUntilLeadershipLostAsync(cts.Token));
                 }
 
                 // wait 1 become leader
@@ -321,7 +325,7 @@ namespace k8s.E2E
                         leader2init.Set();
                     };
 
-                    tasks.Add(le.RunAsync());
+                    tasks.Add(le.RunUntilLeadershipLostAsync());
                     Assert.True(leader2init.WaitOne(TimeSpan.FromSeconds(30)));
 
                     Assert.Equal("leader1", le.GetLeader());
@@ -347,16 +351,16 @@ namespace k8s.E2E
             var namespaceParameter = "default";
             var podName = "k8scsharp-e2e-logstream-pod";
 
-            var client = CreateClient();
+            using var client = CreateClient();
 
             void Cleanup()
             {
-                var pods = client.ListNamespacedPod(namespaceParameter);
+                var pods = client.CoreV1.ListNamespacedPod(namespaceParameter);
                 while (pods.Items.Any(p => p.Metadata.Name == podName))
                 {
                     try
                     {
-                        client.DeleteNamespacedPod(podName, namespaceParameter);
+                        client.CoreV1.DeleteNamespacedPod(podName, namespaceParameter);
                     }
                     catch (HttpOperationException e)
                     {
@@ -372,7 +376,7 @@ namespace k8s.E2E
             {
                 Cleanup();
 
-                client.CreateNamespacedPod(
+                client.CoreV1.CreateNamespacedPod(
                     new V1Pod()
                     {
                         Metadata = new V1ObjectMeta { Name = podName, },
@@ -397,8 +401,8 @@ namespace k8s.E2E
 
                 async Task<V1Pod> Pod()
                 {
-                    var pods = client.ListNamespacedPod(namespaceParameter);
-                    var pod = pods.Items.First();
+                    var pods = client.CoreV1.ListNamespacedPod(namespaceParameter);
+                    var pod = pods.Items.First(p => p.Metadata.Name == podName);
                     while (pod.Status.Phase != "Running")
                     {
                         await Task.Delay(TimeSpan.FromSeconds(1)).ConfigureAwait(false);
@@ -409,7 +413,7 @@ namespace k8s.E2E
                 }
 
                 var pod = await Pod().ConfigureAwait(false);
-                var stream = client.ReadNamespacedPodLog(pod.Metadata.Name, pod.Metadata.NamespaceProperty, follow: true);
+                var stream = client.CoreV1.ReadNamespacedPodLog(pod.Metadata.Name, pod.Metadata.NamespaceProperty, follow: true);
                 using var reader = new StreamReader(stream);
 
                 var copytask = Task.Run(() =>
@@ -443,9 +447,9 @@ namespace k8s.E2E
         [MinikubeFact]
         public async Task DatetimeFieldTest()
         {
-            var kubernetes = CreateClient();
+            using var kubernetes = CreateClient();
 
-            await kubernetes.CreateNamespacedEventAsync(
+            await kubernetes.CoreV1.CreateNamespacedEventAsync(
                 new Corev1Event(
                     new V1ObjectReference(
                         "v1alpha1",
@@ -475,17 +479,17 @@ namespace k8s.E2E
             var namespaceParameter = "default";
             var podName = "k8scsharp-e2e-generic-pod";
 
-            var client = CreateClient();
+            using var client = CreateClient();
             var genericPods = new GenericClient(client, "", "v1", "pods");
 
             void Cleanup()
             {
-                var pods = client.ListNamespacedPod(namespaceParameter);
+                var pods = client.CoreV1.ListNamespacedPod(namespaceParameter);
                 while (pods.Items.Any(p => p.Metadata.Name == podName))
                 {
                     try
                     {
-                        client.DeleteNamespacedPod(podName, namespaceParameter);
+                        client.CoreV1.DeleteNamespacedPod(podName, namespaceParameter);
                     }
                     catch (HttpOperationException e)
                     {
@@ -501,26 +505,159 @@ namespace k8s.E2E
             {
                 Cleanup();
 
-                await genericPods.CreateNamespacedAsync(
-                    new V1Pod()
-                    {
-                        Metadata = new V1ObjectMeta { Name = podName, },
-                        Spec = new V1PodSpec
+                // create + list
+                {
+                    await genericPods.CreateNamespacedAsync(
+                        new V1Pod()
                         {
-                            Containers = new[] { new V1Container() { Name = "k8scsharp-e2e", Image = "nginx", }, },
+                            Metadata = new V1ObjectMeta { Name = podName, Labels = new Dictionary<string, string> { { "place", "holder" }, }, },
+                            Spec = new V1PodSpec
+                            {
+                                Containers = new[] { new V1Container() { Name = "k8scsharp-e2e", Image = "nginx", }, },
+                            },
                         },
-                    },
-                    namespaceParameter).ConfigureAwait(false);
+                        namespaceParameter).ConfigureAwait(false);
 
-                var pods = await genericPods.ListNamespacedAsync<V1PodList>(namespaceParameter).ConfigureAwait(false);
-                Assert.Contains(pods.Items, p => p.Metadata.Name == podName);
+                    var pods = await genericPods.ListNamespacedAsync<V1PodList>(namespaceParameter).ConfigureAwait(false);
+                    Assert.Contains(pods.Items, p => p.Metadata.Name == podName);
+                }
 
-                int retry = 5;
-                while (retry-- > 0)
+                // replace + get
+                {
+                    var pod = await genericPods.ReadNamespacedAsync<V1Pod>(namespaceParameter, podName).ConfigureAwait(false);
+                    var old = JsonSerializer.SerializeToDocument(pod);
+
+                    var newlabels = new Dictionary<string, string>(pod.Metadata.Labels) { ["test"] = "generic-test-jsonpatch" };
+                    pod.Metadata.Labels = newlabels;
+
+                    var expected = JsonSerializer.SerializeToDocument(pod);
+                    var patch = old.CreatePatch(expected);
+
+                    await genericPods.PatchNamespacedAsync<V1Pod>(new V1Patch(patch, V1Patch.PatchType.JsonPatch), namespaceParameter, podName).ConfigureAwait(false);
+                    var pods = await genericPods.ListNamespacedAsync<V1PodList>(namespaceParameter).ConfigureAwait(false);
+                    Assert.Contains(pods.Items, p => p.Labels().Contains(new KeyValuePair<string, string>("test", "generic-test-jsonpatch")));
+                }
+
+                // replace + get
+                {
+                    var pod = await genericPods.ReadNamespacedAsync<V1Pod>(namespaceParameter, podName).ConfigureAwait(false);
+                    pod.Spec.Containers[0].Image = "httpd";
+                    await genericPods.ReplaceNamespacedAsync(pod, namespaceParameter, podName).ConfigureAwait(false);
+
+                    pod = await genericPods.ReadNamespacedAsync<V1Pod>(namespaceParameter, podName).ConfigureAwait(false);
+                    Assert.Equal("httpd", pod.Spec.Containers[0].Image);
+                }
+
+                // delete + list
+                {
+                    V1PodList pods = new V1PodList();
+                    int retry = 5;
+                    while (retry-- > 0)
+                    {
+                        try
+                        {
+                            await genericPods.DeleteNamespacedAsync<V1Pod>(namespaceParameter, podName).ConfigureAwait(false);
+                        }
+                        catch (HttpOperationException e)
+                        {
+                            if (e.Response.StatusCode == System.Net.HttpStatusCode.NotFound)
+                            {
+                                return;
+                            }
+                        }
+
+                        pods = await genericPods.ListNamespacedAsync<V1PodList>(namespaceParameter).ConfigureAwait(false);
+                        if (!pods.Items.Any(p => p.Metadata.Name == podName))
+                        {
+                            break;
+                        }
+
+                        await Task.Delay(TimeSpan.FromSeconds(2.5)).ConfigureAwait(false);
+                    }
+
+                    Assert.DoesNotContain(pods.Items, p => p.Metadata.Name == podName);
+                }
+            }
+            finally
+            {
+                Cleanup();
+            }
+        }
+
+
+        [MinikubeFact]
+        public async Task CopyToPodTestAsync()
+        {
+            var namespaceParameter = "default";
+            var podName = "k8scsharp-e2e-cp-pod";
+
+            using var client = CreateClient();
+
+            async Task<int> CopyFileToPodAsync(string name, string @namespace, string container, Stream inputFileStream, string destinationFilePath, CancellationToken cancellationToken = default(CancellationToken))
+            {
+                // The callback which processes the standard input, standard output and standard error of exec method
+                var handler = new ExecAsyncCallback(async (stdIn, stdOut, stdError) =>
+                {
+                    var fileInfo = new FileInfo(destinationFilePath);
+                    try
+                    {
+                        using (var memoryStream = new MemoryStream())
+                        {
+                            using (var tarOutputStream = new TarOutputStream(memoryStream, Encoding.Default))
+                            {
+                                tarOutputStream.IsStreamOwner = false;
+
+                                var fileSize = inputFileStream.Length;
+                                var entry = TarEntry.CreateTarEntry(fileInfo.Name);
+
+                                entry.Size = fileSize;
+
+                                tarOutputStream.PutNextEntry(entry);
+                                await inputFileStream.CopyToAsync(tarOutputStream).ConfigureAwait(false);
+                                tarOutputStream.CloseEntry();
+                            }
+
+                            memoryStream.Position = 0;
+
+                            await memoryStream.CopyToAsync(stdIn).ConfigureAwait(false);
+                            await memoryStream.FlushAsync().ConfigureAwait(false);
+                            stdIn.Close();
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        throw new IOException($"Copy command failed: {ex.Message}");
+                    }
+
+                    using StreamReader streamReader = new StreamReader(stdError);
+                    while (streamReader.EndOfStream == false)
+                    {
+                        string error = await streamReader.ReadToEndAsync().ConfigureAwait(false);
+                        throw new IOException($"Copy command failed: {error}");
+                    }
+                });
+
+                string destinationFolder = Path.GetDirectoryName(destinationFilePath).Replace("\\", "/");
+
+                return await client.NamespacedPodExecAsync(
+                    name,
+                    @namespace,
+                    container,
+                    new string[] { "tar", "-xmf", "-", "-C", destinationFolder },
+                    false,
+                    handler,
+                    cancellationToken).ConfigureAwait(false);
+            }
+
+
+            void Cleanup()
+            {
+                var pods = client.CoreV1.ListNamespacedPod(namespaceParameter);
+                while (pods.Items.Any(p => p.Metadata.Name == podName))
                 {
                     try
                     {
-                        await genericPods.DeleteNamespacedAsync<V1Pod>(namespaceParameter, podName).ConfigureAwait(false);
+                        client.CoreV1.DeleteNamespacedPod(podName, namespaceParameter);
                     }
                     catch (HttpOperationException e)
                     {
@@ -529,24 +666,99 @@ namespace k8s.E2E
                             return;
                         }
                     }
+                }
+            }
 
-                    pods = await genericPods.ListNamespacedAsync<V1PodList>(namespaceParameter).ConfigureAwait(false);
-                    if (!pods.Items.Any(p => p.Metadata.Name == podName))
+            try
+            {
+                Cleanup();
+
+                client.CoreV1.CreateNamespacedPod(
+                    new V1Pod()
                     {
-                        break;
+                        Metadata = new V1ObjectMeta { Name = podName, },
+                        Spec = new V1PodSpec
+                        {
+                            Containers = new[]
+                            {
+                                new V1Container()
+                                {
+                                    Name = "container",
+                                    Image = "ubuntu",
+                                    // Image = "busybox", // TODO not work with busybox
+                                    Command = new[] { "sleep" },
+                                    Args = new[] { "infinity" },
+                                },
+                            },
+                        },
+                    },
+                    namespaceParameter);
+
+                var lines = new List<string>();
+                var started = new ManualResetEvent(false);
+
+                async Task<V1Pod> Pod()
+                {
+                    var pods = client.CoreV1.ListNamespacedPod(namespaceParameter);
+                    var pod = pods.Items.First(p => p.Metadata.Name == podName);
+                    while (pod.Status.Phase != "Running")
+                    {
+                        await Task.Delay(TimeSpan.FromSeconds(1)).ConfigureAwait(false);
+                        return await Pod().ConfigureAwait(false);
                     }
 
-                    await Task.Delay(TimeSpan.FromSeconds(2.5)).ConfigureAwait(false);
+                    return pod;
                 }
 
-                Assert.DoesNotContain(pods.Items, p => p.Metadata.Name == podName);
+                var pod = await Pod().ConfigureAwait(false);
+
+
+                async Task AssertMd5sumAsync(string file, byte[] orig)
+                {
+                    var ws = await client.WebSocketNamespacedPodExecAsync(
+                       pod.Metadata.Name,
+                       pod.Metadata.NamespaceProperty,
+                       new string[] { "md5sum", file },
+                       "container").ConfigureAwait(false);
+
+                    var demux = new StreamDemuxer(ws);
+                    demux.Start();
+
+                    var buff = new byte[4096];
+                    var stream = demux.GetStream(1, 1);
+                    var read = stream.Read(buff, 0, 4096);
+                    var remotemd5 = Encoding.Default.GetString(buff);
+                    remotemd5 = remotemd5.Substring(0, 32);
+
+                    var md5 = MD5.Create().ComputeHash(orig);
+                    var localmd5 = BitConverter.ToString(md5).Replace("-", string.Empty).ToLower();
+
+                    Assert.Equal(localmd5, remotemd5);
+                }
+
+
+                //
+                {
+                    // small
+                    var content = new byte[1 * 1024 * 1024];
+                    new Random().NextBytes(content);
+                    await CopyFileToPodAsync(pod.Metadata.Name, pod.Metadata.NamespaceProperty, "container", new MemoryStream(content), "/tmp/test").ConfigureAwait(false);
+                    await AssertMd5sumAsync("/tmp/test", content).ConfigureAwait(false);
+                }
+
+                {
+                    // big
+                    var content = new byte[40 * 1024 * 1024];
+                    new Random().NextBytes(content);
+                    await CopyFileToPodAsync(pod.Metadata.Name, pod.Metadata.NamespaceProperty, "container", new MemoryStream(content), "/tmp/test").ConfigureAwait(false);
+                    await AssertMd5sumAsync("/tmp/test", content).ConfigureAwait(false);
+                }
             }
             finally
             {
                 Cleanup();
             }
         }
-
 
         public static IKubernetes CreateClient()
         {

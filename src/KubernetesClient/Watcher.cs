@@ -1,13 +1,12 @@
-using System.IO;
 using System.Runtime.CompilerServices;
 using System.Runtime.Serialization;
-using System.Threading;
-using System.Threading.Tasks;
-using k8s.Models;
 
 namespace k8s
 {
     /// <summary>Describes the type of a watch event.</summary>
+#if NET8_0_OR_GREATER
+    [JsonConverter(typeof(JsonStringEnumConverter<WatchEventType>))]
+#endif
     public enum WatchEventType
     {
         /// <summary>Emitted when an object is created, modified to match a watch's filter, or when a watch is first opened.</summary>

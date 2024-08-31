@@ -1,18 +1,12 @@
-using System.Threading;
-using System.Threading.Tasks;
-using k8s.Models;
-using k8s.Autorest;
-
-
 namespace k8s.LeaderElection.ResourceLock
 {
     public abstract class MetaObjectLock<T> : ILock
         where T : class, IMetadata<V1ObjectMeta>, new()
     {
-        private IKubernetes client;
-        private string ns;
-        private string name;
-        private string identity;
+        private readonly IKubernetes client;
+        private readonly string ns;
+        private readonly string name;
+        private readonly string identity;
         private T metaObjCache;
 
         protected MetaObjectLock(IKubernetes client, string @namespace, string name, string identity)

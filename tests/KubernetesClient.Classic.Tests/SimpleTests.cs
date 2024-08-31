@@ -1,9 +1,9 @@
+using k8s.Models;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading.Tasks;
 using Xunit;
-using k8s.Models;
 
 namespace k8s.tests;
 
@@ -12,7 +12,7 @@ public class BasicTests
     // TODO: fail to setup asp.net core 6 on net48
     private class DummyHttpServer : System.IDisposable
     {
-        private TcpListener server;
+        private readonly TcpListener server;
         private readonly Task loop;
         private volatile bool running = false;
 
@@ -52,6 +52,9 @@ public class BasicTests
             {
                 running = false;
                 server.Stop();
+#if NET8_0_OR_GREATER
+                server.Dispose();
+#endif
                 loop.Wait();
                 loop.Dispose();
             }
@@ -74,7 +77,7 @@ public class BasicTests
         });
         var client = new Kubernetes(new KubernetesClientConfiguration { Host = server.Addr });
 
-        var pod = await client.ReadNamespacedPodAsync("pod", "default").ConfigureAwait(false);
+        var pod = await client.CoreV1.ReadNamespacedPodAsync("pod", "default").ConfigureAwait(true);
 
         Assert.Equal("pod0", pod.Metadata.Name);
     }

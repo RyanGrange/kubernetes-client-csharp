@@ -1,25 +1,17 @@
-﻿using System.Globalization;
-using System.Text.Json;
-using Json.Patch;
+﻿using Json.Patch;
 using k8s;
 using k8s.Models;
-
-double ConvertToUnixTimestamp(DateTime date)
-{
-    var origin = new DateTime(1970, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc);
-    var diff = date.ToUniversalTime() - origin;
-    return Math.Floor(diff.TotalSeconds);
-}
+using System.Text.Json;
 
 async Task RestartDaemonSetAsync(string name, string @namespace, IKubernetes client)
 {
-    var daemonSet = await client.ReadNamespacedDaemonSetAsync(name, @namespace);
+    var daemonSet = await client.AppsV1.ReadNamespacedDaemonSetAsync(name, @namespace);
     var options = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase, WriteIndented = true };
     var old = JsonSerializer.SerializeToDocument(daemonSet, options);
-
-    var restart = new Dictionary<string, string>(daemonSet.Spec.Template.Metadata.Annotations)
+    var now = DateTimeOffset.Now.ToUnixTimeSeconds();
+    var restart = new Dictionary<string, string>
     {
-        ["date"] = ConvertToUnixTimestamp(DateTime.UtcNow).ToString(CultureInfo.InvariantCulture)
+        ["date"] = now.ToString()
     };
 
     daemonSet.Spec.Template.Metadata.Annotations = restart;
@@ -27,18 +19,18 @@ async Task RestartDaemonSetAsync(string name, string @namespace, IKubernetes cli
     var expected = JsonSerializer.SerializeToDocument(daemonSet);
 
     var patch = old.CreatePatch(expected);
-    await client.PatchNamespacedDaemonSetAsync(new V1Patch(patch, V1Patch.PatchType.JsonPatch), name, @namespace);
+    await client.AppsV1.PatchNamespacedDaemonSetAsync(new V1Patch(patch, V1Patch.PatchType.JsonPatch), name, @namespace);
 }
 
 async Task RestartDeploymentAsync(string name, string @namespace, IKubernetes client)
 {
-    var deployment = await client.ReadNamespacedDeploymentAsync(name, @namespace);
+    var deployment = await client.AppsV1.ReadNamespacedDeploymentAsync(name, @namespace);
     var options = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase, WriteIndented = true };
     var old = JsonSerializer.SerializeToDocument(deployment, options);
-
-    var restart = new Dictionary<string, string>(deployment.Spec.Template.Metadata.Annotations)
+    var now = DateTimeOffset.Now.ToUnixTimeSeconds();
+    var restart = new Dictionary<string, string>
     {
-        ["date"] = ConvertToUnixTimestamp(DateTime.UtcNow).ToString(CultureInfo.InvariantCulture)
+        ["date"] = now.ToString()
     };
 
     deployment.Spec.Template.Metadata.Annotations = restart;
@@ -46,18 +38,18 @@ async Task RestartDeploymentAsync(string name, string @namespace, IKubernetes cl
     var expected = JsonSerializer.SerializeToDocument(deployment);
 
     var patch = old.CreatePatch(expected);
-    await client.PatchNamespacedDeploymentAsync(new V1Patch(patch, V1Patch.PatchType.JsonPatch), name, @namespace);
+    await client.AppsV1.PatchNamespacedDeploymentAsync(new V1Patch(patch, V1Patch.PatchType.JsonPatch), name, @namespace);
 }
 
 async Task RestartStatefulSetAsync(string name, string @namespace, IKubernetes client)
 {
-    var deployment = await client.ReadNamespacedStatefulSetAsync(name, @namespace);
+    var deployment = await client.AppsV1.ReadNamespacedStatefulSetAsync(name, @namespace);
     var options = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase, WriteIndented = true };
     var old = JsonSerializer.SerializeToDocument(deployment, options);
-
-    var restart = new Dictionary<string, string>(deployment.Spec.Template.Metadata.Annotations)
+    var now = DateTimeOffset.Now.ToUnixTimeSeconds();
+    var restart = new Dictionary<string, string>
     {
-        ["date"] = ConvertToUnixTimestamp(DateTime.UtcNow).ToString(CultureInfo.InvariantCulture)
+        ["date"] = now.ToString()
     };
 
     deployment.Spec.Template.Metadata.Annotations = restart;
@@ -65,7 +57,7 @@ async Task RestartStatefulSetAsync(string name, string @namespace, IKubernetes c
     var expected = JsonSerializer.SerializeToDocument(deployment);
 
     var patch = old.CreatePatch(expected);
-    await client.PatchNamespacedStatefulSetAsync(new V1Patch(patch, V1Patch.PatchType.JsonPatch), name, @namespace);
+    await client.AppsV1.PatchNamespacedStatefulSetAsync(new V1Patch(patch, V1Patch.PatchType.JsonPatch), name, @namespace);
 }
 
 var config = KubernetesClientConfiguration.BuildConfigFromConfigFile();

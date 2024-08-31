@@ -1,32 +1,31 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <IsPackable>false</IsPackable>
-    <SignAssembly>true</SignAssembly>
     <RootNamespace>k8s.E2E</RootNamespace>
-    <TargetFrameworks>netcoreapp3.1;net5.0;net6.0</TargetFrameworks>
+    <TargetFrameworks>net6.0;net8.0</TargetFrameworks>
   </PropertyGroup>
 
   <ItemGroup>
 
-    <PackageReference Include="JsonPatch.Net" Version="1.1.2" />
+    <PackageReference Include="JsonPatch.Net" />
+    <PackageReference Include="SharpZipLib" />
 
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.1.0" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
 
-    <PackageReference Include="Nito.AsyncEx.Coordination" Version="5.1.2" />
-    <PackageReference Include="xunit" Version="2.4.1" />
-    <PackageReference Include="xunit.runner.visualstudio" Version="2.4.3">
-      <PrivateAssets>all</PrivateAssets>
+    <PackageReference Include="Nito.AsyncEx.Coordination" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <DotNetCliToolReference Include="dotnet-xunit" Version="2.3.1" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\KubernetesClient\KubernetesClient.csproj" />
+    <ProjectReference Include="..\..\src\KubernetesClient.Kubectl\KubernetesClient.Kubectl.csproj" />
     <ProjectReference Include="..\SkipTestLogger\SkipTestLogger.csproj" />
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Update="Microsoft.CodeAnalysis.FxCopAnalyzers" Version="3.3.1" />
+    
   </ItemGroup>
 </Project>

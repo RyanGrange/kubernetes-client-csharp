@@ -1,3 +1,14 @@
+using k8s.Authentication;
+using k8s.Autorest;
+using k8s.Exceptions;
+using k8s.KubeConfigModels;
+using k8s.Models;
+using k8s.Tests.Mock;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Server.Kestrel.Https;
+using Org.BouncyCastle.Crypto.Parameters;
+using Org.BouncyCastle.Pkcs;
+using Org.BouncyCastle.Security;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -9,17 +20,6 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Threading.Tasks;
-using k8s.Authentication;
-using k8s.Exceptions;
-using k8s.KubeConfigModels;
-using k8s.Models;
-using k8s.Tests.Mock;
-using Microsoft.AspNetCore.Hosting;
-using Microsoft.AspNetCore.Server.Kestrel.Https;
-using k8s.Autorest;
-using Org.BouncyCastle.Crypto.Parameters;
-using Org.BouncyCastle.Pkcs;
-using Org.BouncyCastle.Security;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -36,7 +36,7 @@ namespace k8s.Tests
 
         private static HttpOperationResponse<V1PodList> ExecuteListPods(IKubernetes client)
         {
-            return client.ListNamespacedPodWithHttpMessagesAsync("default").Result;
+            return client.CoreV1.ListNamespacedPodWithHttpMessagesAsync("default").Result;
         }
 
         [Fact]
@@ -49,7 +49,7 @@ namespace k8s.Tests
                 var listTask = ExecuteListPods(client);
 
                 Assert.True(listTask.Response.IsSuccessStatusCode);
-                Assert.Equal(1, listTask.Body.Items.Count);
+                Assert.Single(listTask.Body.Items);
             }
 
             using (var server = new MockKubeApiServer(testOutput, cxt =>
@@ -114,7 +114,7 @@ namespace k8s.Tests
 
                     var listTask = ExecuteListPods(client);
                     Assert.True(listTask.Response.IsSuccessStatusCode);
-                    Assert.Equal(1, listTask.Body.Items.Count);
+                    Assert.Single(listTask.Body.Items);
                 }
 
                 {
@@ -224,7 +224,7 @@ namespace k8s.Tests
 
                     Assert.True(clientCertificateValidationCalled);
                     Assert.True(listTask.Response.IsSuccessStatusCode);
-                    Assert.Equal(1, listTask.Body.Items.Count);
+                    Assert.Single(listTask.Body.Items);
                 }
 
                 {
@@ -241,7 +241,7 @@ namespace k8s.Tests
 
                     Assert.True(clientCertificateValidationCalled);
                     Assert.True(listTask.Response.IsSuccessStatusCode);
-                    Assert.Equal(1, listTask.Body.Items.Count);
+                    Assert.Single(listTask.Body.Items);
                 }
 
                 {
@@ -324,7 +324,7 @@ namespace k8s.Tests
                     var client = new Kubernetes(clientConfig);
                     var listTask = ExecuteListPods(client);
                     Assert.True(listTask.Response.IsSuccessStatusCode);
-                    Assert.Equal(1, listTask.Body.Items.Count);
+                    Assert.Single(listTask.Body.Items);
                 }
 
                 {
@@ -368,7 +368,7 @@ namespace k8s.Tests
                     var client = new Kubernetes(clientConfig);
                     var listTask = ExecuteListPods(client);
                     Assert.True(listTask.Response.IsSuccessStatusCode);
-                    Assert.Equal(1, listTask.Body.Items.Count);
+                    Assert.Single(listTask.Body.Items);
                 }
 
                 {
@@ -410,7 +410,7 @@ namespace k8s.Tests
 
                     var listTask = ExecuteListPods(client);
                     Assert.True(listTask.Response.IsSuccessStatusCode);
-                    Assert.Equal(1, listTask.Body.Items.Count);
+                    Assert.Single(listTask.Body.Items);
                 }
 
                 {
@@ -478,7 +478,7 @@ namespace k8s.Tests
 
                     var listTask = ExecuteListPods(client);
                     Assert.True(listTask.Response.IsSuccessStatusCode);
-                    Assert.Equal(1, listTask.Body.Items.Count);
+                    Assert.Single(listTask.Body.Items);
                 }
 
                 {
@@ -493,7 +493,7 @@ namespace k8s.Tests
                     try
                     {
                         PeelAggregate(() => ExecuteListPods(client));
-                        Assert.True(false, "should not be here");
+                        Assert.Fail("should not be here");
                     }
                     catch (KubernetesClientException e)
                     {
@@ -513,7 +513,7 @@ namespace k8s.Tests
                     try
                     {
                         PeelAggregate(() => ExecuteListPods(client));
-                        Assert.True(false, "should not be here");
+                        Assert.Fail("should not be here");
                     }
                     catch (KubernetesClientException e)
                     {
@@ -528,7 +528,7 @@ namespace k8s.Tests
             try
             {
                 PeelAggregate(() => ExecuteListPods(client));
-                Assert.True(false, "should not be here");
+                Assert.Fail("should not be here");
             }
             catch (HttpOperationException e)
             {
@@ -541,7 +541,7 @@ namespace k8s.Tests
             var store = new Pkcs12Store();
             store.Load(stream, new char[] { });
 
-            var keyAlias = store.Aliases.Cast<string>().SingleOrDefault(a => store.IsKeyEntry(a));
+            var keyAlias = store.Aliases.Cast<string>().SingleOrDefault(store.IsKeyEntry);
 
             var key = (RsaPrivateCrtKeyParameters)store.GetKey(keyAlias).Key;
             var bouncyCertificate = store.GetCertificate(keyAlias).Certificate;

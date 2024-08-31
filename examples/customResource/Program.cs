@@ -31,7 +31,7 @@ namespace customResource
             try
             {
                 Console.WriteLine("creating CR {0}", myCr.Metadata.Name);
-                var response = await client.CreateNamespacedCustomObjectWithHttpMessagesAsync(
+                var response = await client.CustomObjects.CreateNamespacedCustomObjectWithHttpMessagesAsync(
                     myCr,
                     myCRD.Group, myCRD.Version,
                     myCr.Metadata.NamespaceProperty ?? "default",
@@ -66,7 +66,7 @@ namespace customResource
             var crPatch = new V1Patch(patch, V1Patch.PatchType.JsonPatch);
             try
             {
-                var patchResponse = await client.PatchNamespacedCustomObjectAsync(
+                var patchResponse = await client.CustomObjects.PatchNamespacedCustomObjectAsync(
                     crPatch,
                     myCRD.Group,
                     myCRD.Version,
@@ -92,11 +92,11 @@ namespace customResource
             // deleting the custom resource
             try
             {
-                myCr = await generic.DeleteNamespacedAsync<CResource>(
+                var status = await generic.DeleteNamespacedAsync<V1Status>(
                    myCr.Metadata.NamespaceProperty ?? "default",
                    myCr.Metadata.Name).ConfigureAwait(false);
 
-                Console.WriteLine("Deleted the CR");
+                Console.WriteLine($"Deleted the CR status: {status}");
             }
             catch (Exception exception)
             {

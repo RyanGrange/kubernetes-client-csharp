@@ -1,16 +1,13 @@
 using IdentityModel.OidcClient;
 using k8s.Exceptions;
-using k8s.Autorest;
 using System.IdentityModel.Tokens.Jwt;
 using System.Net.Http.Headers;
-using System.Threading;
-using System.Threading.Tasks;
 
 namespace k8s.Authentication
 {
     public class OidcTokenProvider : ITokenProvider
     {
-        private OidcClient _oidcClient;
+        private readonly OidcClient _oidcClient;
         private string _idToken;
         private string _refreshToken;
         private DateTimeOffset _expiry;
@@ -35,12 +32,12 @@ namespace k8s.Authentication
 
         private DateTime getExpiryFromToken()
         {
-            int expiry;
+            long expiry;
             var handler = new JwtSecurityTokenHandler();
             try
             {
                 var token = handler.ReadJwtToken(_idToken);
-                expiry = token.Payload.Exp ?? 0;
+                expiry = token.Payload.Expiration ?? 0;
             }
             catch
             {

@@ -1,6 +1,6 @@
+using k8s.Authentication;
 using System.Net.Http;
 using System.Security.Cryptography.X509Certificates;
-using k8s.Autorest;
 
 namespace k8s
 {
@@ -9,6 +9,8 @@ namespace k8s
     /// </summary>
     public partial class KubernetesClientConfiguration
     {
+        private JsonSerializerOptions jsonSerializerOptions;
+
         /// <summary>
         ///     Gets current namespace
         /// </summary>
@@ -53,6 +55,11 @@ namespace k8s
         ///     Gets a value indicating whether to skip ssl server cert validation
         /// </summary>
         public bool SkipTlsVerify { get; set; }
+
+        /// <summary>
+        ///     Option to override the TLS server name
+        /// </summary>
+        public string TlsServerName { get; set; }
 
         /// <summary>
         ///     Gets or sets the HTTP user agent.
@@ -103,5 +110,43 @@ namespace k8s
 #else
         public Action<HttpClientHandler> FirstMessageHandlerSetup { get; set; }
 #endif
+
+        /// <summary>
+        /// Do not use http2 even it is available
+        /// </summary>
+        public bool DisableHttp2 { get; set; } = false;
+
+        /// <summary>
+        /// Options for the <see cref="JsonSerializer"/> to override the default ones.
+        /// </summary>
+        public JsonSerializerOptions JsonSerializerOptions
+        {
+            get
+            {
+                // If not yet set, use defaults from KubernetesJson.
+                if (jsonSerializerOptions is null)
+                {
+                    KubernetesJson.AddJsonOptions(options =>
+                    {
+                        jsonSerializerOptions = new JsonSerializerOptions(options);
+                    });
+                }
+
+                return jsonSerializerOptions;
+            }
+
+            private set => jsonSerializerOptions = value;
+        }
+
+        /// <inheritdoc cref="KubernetesJson.AddJsonOptions(Action{JsonSerializerOptions})"/>
+        public void AddJsonOptions(Action<JsonSerializerOptions> configure)
+        {
+            if (configure is null)
+            {
+                throw new ArgumentNullException(nameof(configure));
+            }
+
+            configure(JsonSerializerOptions);
+        }
     }
 }

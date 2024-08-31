@@ -1,8 +1,8 @@
+using k8s;
+using k8s.Models;
 using System;
 using System.Net;
 using System.Threading.Tasks;
-using k8s;
-using k8s.Models;
 
 namespace @namespace
 {
@@ -10,7 +10,7 @@ namespace @namespace
     {
         private static void ListNamespaces(IKubernetes client)
         {
-            var list = client.ListNamespace();
+            var list = client.CoreV1.ListNamespace();
             foreach (var item in list.Items)
             {
                 Console.WriteLine(item.Metadata.Name);
@@ -29,15 +29,15 @@ namespace @namespace
                 await Task.Delay(delayMillis).ConfigureAwait(false);
                 try
                 {
-                    await client.ReadNamespaceAsync(name).ConfigureAwait(false);
+                    await client.CoreV1.ReadNamespaceAsync(name).ConfigureAwait(false);
                 }
                 catch (AggregateException ex)
                 {
                     foreach (var innerEx in ex.InnerExceptions)
                     {
-                        if (innerEx is k8s.Autorest.HttpOperationException)
+                        if (innerEx is k8s.Autorest.HttpOperationException exception)
                         {
-                            var code = ((k8s.Autorest.HttpOperationException)innerEx).Response.StatusCode;
+                            var code = exception.Response.StatusCode;
                             if (code == HttpStatusCode.NotFound)
                             {
                                 return;
@@ -73,12 +73,12 @@ namespace @namespace
 
             var ns = new V1Namespace { Metadata = new V1ObjectMeta { Name = "test" } };
 
-            var result = client.CreateNamespace(ns);
+            var result = client.CoreV1.CreateNamespace(ns);
             Console.WriteLine(result);
 
             ListNamespaces(client);
 
-            var status = client.DeleteNamespace(ns.Metadata.Name, new V1DeleteOptions());
+            var status = client.CoreV1.DeleteNamespace(ns.Metadata.Name, new V1DeleteOptions());
 
             if (status.HasObject)
             {

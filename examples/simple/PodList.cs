@@ -1,5 +1,5 @@
-using System;
 using k8s;
+using System;
 
 namespace simple
 {
@@ -11,7 +11,7 @@ namespace simple
             IKubernetes client = new Kubernetes(config);
             Console.WriteLine("Starting Request!");
 
-            var list = client.ListNamespacedPod("default");
+            var list = client.CoreV1.ListNamespacedPod("default");
             foreach (var item in list.Items)
             {
                 Console.WriteLine(item.Metadata.Name);

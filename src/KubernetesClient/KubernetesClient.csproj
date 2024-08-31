@@ -1,26 +1,21 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <PropertyGroup>
-    <TargetFrameworks>netstandard2.1;net5.0;net6.0</TargetFrameworks>
-    <RootNamespace>k8s</RootNamespace>
-  </PropertyGroup>
+    <PropertyGroup>
+        <TargetFrameworks>net6.0;net8.0</TargetFrameworks>
+        <RootNamespace>k8s</RootNamespace>
+        <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
+    </PropertyGroup>
 
-  <ItemGroup>
-    <PackageReference Include="prometheus-net" Version="5.0.1" />
-    <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="6.13.1" />
-    <PackageReference Include="System.IO.Abstractions" Version="13.2.47" />
-    <PackageReference Include="IdentityModel.OidcClient" Version="4.0.0" />
+    <ItemGroup>
+        <PackageReference Condition="'$(TargetFramework)'=='net6.0'" Include="System.Diagnostics.DiagnosticSource" VersionOverride="7.0.0" />
+        <PackageReference Include="System.IdentityModel.Tokens.Jwt" />
+        <PackageReference Include="IdentityModel.OidcClient" />
+        <PackageReference Include="Fractions" />
+        <PackageReference Include="YamlDotNet" />
+    </ItemGroup>
 
-    <PackageReference Include="Portable.BouncyCastle" Version="1.8.10" Condition="'$(TargetFramework)' == 'netstandard2.1'" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Folder Include="Util\Informer" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <ProjectReference Include="..\KubernetesClient.Models\KubernetesClient.Models.csproj" />
-    <ProjectReference Include="..\KubernetesClient.Basic\KubernetesClient.Basic.csproj" />
-  </ItemGroup>
+    <ItemGroup>
+        <ProjectReference Include="..\LibKubernetesGenerator\generators\LibKubernetesGenerator\LibKubernetesGenerator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+    </ItemGroup>
 
 </Project>

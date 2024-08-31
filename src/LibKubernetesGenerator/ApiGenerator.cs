@@ -1,29 +1,24 @@
-using System.Collections.Generic;
-using System.Linq;
+using CaseExtensions;
 using Microsoft.CodeAnalysis;
 using NSwag;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace LibKubernetesGenerator
 {
     internal class ApiGenerator
     {
-        public void Generate(OpenApiDocument swagger, GeneratorExecutionContext context)
+        private readonly ScriptObjectFactory scriptObjectFactory;
+
+        public ApiGenerator(ScriptObjectFactory scriptObjectFactory)
+        {
+            this.scriptObjectFactory = scriptObjectFactory;
+        }
+
+        public void Generate(OpenApiDocument swagger, IncrementalGeneratorPostInitializationContext context)
         {
             var data = swagger.Operations
                 .Where(o => o.Method != OpenApiOperationMethod.Options)
-                .GroupBy(o => o.Operation.OperationId)
-                .Select(g =>
-                {
-                    var gs = g.ToArray();
-
-                    for (var i = 1; i < g.Count(); i++)
-                    {
-                        gs[i].Operation.OperationId += i;
-                    }
-
-                    return gs;
-                })
-                .SelectMany(g => g)
                 .Select(o =>
                 {
                     var ps = o.Operation.ActualParameters.OrderBy(p => !p.IsRequired).ToArray();
@@ -54,9 +49,30 @@ namespace LibKubernetesGenerator
                 })
                 .ToArray();
 
-            context.RenderToContext("IKubernetes.cs.template", data, "IKubernetes.g.cs");
-            context.RenderToContext("Kubernetes.cs.template", data, "Kubernetes.g.cs");
-            context.RenderToContext("KubernetesExtensions.cs.template", data, "KubernetesExtensions.g.cs");
+            var sc = scriptObjectFactory.CreateScriptObject();
+
+            var groups = new List<string>();
+
+            foreach (var grouped in data.GroupBy(d => d.Operation.Tags.First()))
+            {
+                var name = grouped.Key.ToPascalCase();
+                groups.Add(name);
+
+                var apis = grouped.ToArray();
+
+                sc.SetValue("name", name, true);
+                sc.SetValue("apis", apis, true);
+
+                context.RenderToContext($"IOperations.cs.template", sc, $"I{name}Operations.g.cs");
+                context.RenderToContext("Operations.cs.template", sc, $"{name}Operations.g.cs");
+                context.RenderToContext("OperationsExtensions.cs.template", sc, $"{name}OperationsExtensions.g.cs");
+            }
+
+            sc = scriptObjectFactory.CreateScriptObject();
+            sc.SetValue("groups", groups, true);
+
+            context.RenderToContext($"IBasicKubernetes.cs.template", sc, $"IBasicKubernetes.g.cs");
+            context.RenderToContext($"AbstractKubernetes.cs.template", sc, $"AbstractKubernetes.g.cs");
         }
     }
 }

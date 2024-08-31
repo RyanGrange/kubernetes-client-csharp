@@ -1,7 +1,4 @@
 using System.Net;
-using System.Threading;
-using System.Threading.Tasks;
-using k8s.Autorest;
 
 namespace k8s.LeaderElection
 {
@@ -28,6 +25,11 @@ namespace k8s.LeaderElection
         /// </summary>
         public event Action<string> OnNewLeader;
 
+        /// <summary>
+        /// OnError is called when there is an error trying to determine leadership.
+        /// </summary>
+        public event Action<Exception> OnError;
+
         private volatile LeaderElectionRecord observedRecord;
         private DateTimeOffset observedTime = DateTimeOffset.MinValue;
         private string reportedLeader;
@@ -47,7 +49,13 @@ namespace k8s.LeaderElection
             return observedRecord?.HolderIdentity;
         }
 
-        public async Task RunAsync(CancellationToken cancellationToken = default)
+        /// <summary>
+        /// Tries to acquire and hold leadership once via a Kubernetes Lease resource.
+        /// Will complete the returned Task and not retry to acquire leadership again after leadership is lost once.
+        /// </summary>
+        /// <param name="cancellationToken">A token to cancel the operation.</param>
+        /// <returns>A Task representing the asynchronous operation.</returns>
+        public async Task RunUntilLeadershipLostAsync(CancellationToken cancellationToken = default)
         {
             await AcquireAsync(cancellationToken).ConfigureAwait(false);
 
@@ -69,8 +77,9 @@ namespace k8s.LeaderElection
                                 MaybeReportTransition();
                             }
                         }
-                        catch
+                        catch (Exception e)
                         {
+                            OnError?.Invoke(e);
                             // ignore
                             return false;
                         }
@@ -104,6 +113,33 @@ namespace k8s.LeaderElection
             }
         }
 
+        /// <summary>
+        /// Tries to acquire leadership via a Kubernetes Lease resource.
+        /// Will retry to acquire leadership again after leadership was lost.
+        /// </summary>
+        /// <returns>A Task which completes only on cancellation</returns>
+        /// <param name="cancellationToken">A token to cancel the operation.</param>
+        public async Task RunAndTryToHoldLeadershipForeverAsync(CancellationToken cancellationToken = default)
+        {
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                await RunUntilLeadershipLostAsync(cancellationToken).ConfigureAwait(false);
+            }
+        }
+
+        /// <summary>
+        /// Tries to acquire leadership once via a Kubernetes Lease resource.
+        /// Will complete the returned Task and not retry to acquire leadership again after leadership is lost once.
+        /// </summary>
+        /// <seealso cref="RunUntilLeadershipLostAsync"/>
+        /// <param name="cancellationToken">A token to cancel the operation.</param>
+        /// <returns>A Task representing the asynchronous operation.</returns>
+        [Obsolete("Replaced by RunUntilLeadershipLostAsync to encode behavior in method name.")]
+        public Task RunAsync(CancellationToken cancellationToken = default)
+        {
+            return RunUntilLeadershipLostAsync(cancellationToken);
+        }
+
         private async Task<bool> TryAcquireOrRenew(CancellationToken cancellationToken)
         {
             var l = config.Lock;
@@ -129,6 +165,8 @@ namespace k8s.LeaderElection
                 {
                     return false;
                 }
+
+                OnError?.Invoke(e);
             }
 
             if (oldLeaderElectionRecord?.AcquireTime == null ||
@@ -206,8 +244,11 @@ namespace k8s.LeaderElection
                         // wait RetryPeriod since acq return immediately
                         await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
                     }
-
-                    // else timeout
+                    else
+                    {
+                        // else timeout
+                        _ = acq.ContinueWith(t => OnError?.Invoke(t.Exception), TaskContinuationOptions.OnlyOnFaulted);
+                    }
                 }
                 finally
                 {

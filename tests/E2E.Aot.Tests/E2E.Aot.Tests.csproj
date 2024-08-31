@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>k8s.E2E</RootNamespace>
+    <TargetFrameworks>net8.0</TargetFrameworks>
+  </PropertyGroup>
+
+  <ItemGroup>
+
+    <PackageReference Include="JsonPatch.Net" />
+    <PackageReference Include="SharpZipLib" />
+
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+
+    <PackageReference Include="Nito.AsyncEx.Coordination" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\KubernetesClient.Aot\KubernetesClient.Aot.csproj" />
+    <ProjectReference Include="..\SkipTestLogger\SkipTestLogger.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\E2E.Tests\MinikubeFactAttribute.cs" />
+    <Compile Include="..\E2E.Tests\Onebyone.cs" />
+  </ItemGroup>
+</Project>

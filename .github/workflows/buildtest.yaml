@@ -8,21 +8,15 @@ jobs:
         os: [ubuntu-latest, windows-latest, macOS-latest]
     name: Dotnet build
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Setup dotnet SDK 3.1
-        uses: actions/setup-dotnet@v1
+      - name: Setup dotnet
+        uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '3.1.x'          
-      - name: Setup dotnet SDK 5
-        uses: actions/setup-dotnet@v1
-        with:
-          dotnet-version: '5.0.x'          
-      - name: Setup dotnet SDK 6
-        uses: actions/setup-dotnet@v1
-        with:
-          dotnet-version: '6.0.x'          
+          dotnet-version: |
+           6.0.x
+           8.0.x
       # - name: Check Format
       #   # don't check formatting on Windows b/c of CRLF issues.
       #   if: matrix.os == 'ubuntu-latest'
@@ -30,30 +24,50 @@ jobs:
       - name: Build
         run: dotnet build --configuration Release -v detailed
       - name: Test
-        run: dotnet test /p:CollectCoverage=true /p:ExcludeByFile=\"**/KubernetesClient/generated/**/*.cs\" /p:CoverletOutputFormat="cobertura"
-      # - uses: 5monkeys/cobertura-action@master
-      #   with:
-      #     path: tests/KubernetesClient.Tests/coverage.netcoreapp2.1.cobertura.xml
-      #     repo_token: ${{ secrets.GITHUB_TOKEN }}
-      #     minimum_coverage: 0
+        run: dotnet test --configuration Release --collect:"Code Coverage;Format=Cobertura" --logger trx --results-directory TestResults --settings CodeCoverage.runsettings --no-build
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          directory: ./TestResults
+          files: '*.cobertura.xml'
+      - name: Upload test results
+        uses: actions/upload-artifact@v3
+        with:
+          name: test-results
+          path: ./TestResults
+        if: ${{ always() }} # Always run this step even on failure
+
+  # Test code gen for visual studio compatibility >> https://github.com/kubernetes-client/csharp/pull/1008
+  codgen:
+    runs-on: windows-latest
+    name: MSBuild build
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Add msbuild to PATH
+        uses: microsoft/setup-msbuild@v2
+      - name: Setup dotnet SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Restore nugets (msbuild)
+        run: msbuild .\src\KubernetesClient\ -t:restore -p:RestorePackagesConfig=true
+      - name: Build (msbuild)
+        run: msbuild .\src\KubernetesClient\
+
   e2e:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v1
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Setup dotnet SDK 3.1
-        uses: actions/setup-dotnet@v1
+      - name: Setup dotnet
+        uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '3.1.x'          
-      - name: Setup dotnet SDK 5
-        uses: actions/setup-dotnet@v1
-        with:
-          dotnet-version: '5.0.x'                
-      - name: Setup dotnet SDK 6
-        uses: actions/setup-dotnet@v1
-        with:
-          dotnet-version: '6.0.x'          
+          dotnet-version: |
+           6.0.x
+           8.0.x
       - name: Minikube
         run: minikube start
       - name: Test
@@ -64,7 +78,16 @@ jobs:
             cat skip.log
             echo "CASES MUST NOT BE SKIPPED"
             exit 1
-          fi      
+          fi    
+      - name: AOT Test
+        run: |
+          true > skip.log
+          env K8S_E2E_MINIKUBE=1 dotnet test tests/E2E.Aot.Tests --logger "SkipTestLogger;file=$PWD/skip.log"
+          if [ -s skip.log ]; then
+            cat skip.log
+            echo "CASES MUST NOT BE SKIPPED"
+            exit 1
+          fi              
 
 on:
   pull_request:

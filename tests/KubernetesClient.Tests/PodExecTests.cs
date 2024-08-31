@@ -2,8 +2,8 @@
  * These tests are for the netcoreapp2.1 version of the client (there are separate tests for netstandard that don't actually connect to a server).
  */
 
-using k8s.Models;
 using k8s.Autorest;
+using k8s.Models;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -42,8 +42,7 @@ namespace k8s.Tests
         /// <summary>
         ///     Verify that the client can request execution of a command in a pod's default container, with only the STDOUT stream enabled.
         /// </summary>
-        /// <returns><placeholder>A <see cref="Task"/> representing the asynchronous unit test.</placeholder></returns>
-        /// <returns><placeholder>A <see cref="Task"/> representing the asynchronous unit test.</placeholder></returns>
+        /// <returns>A <see cref="Task"/> representing the asynchronous unit test.</returns>
         [Fact(DisplayName = "Can exec in pod's default container, STDOUT only")]
         public async Task ExecDefaultContainerStdOut()
         {
@@ -53,7 +52,7 @@ namespace k8s.Tests
                     TimeSpan.FromSeconds(5));
             }
 
-            await Host.StartAsync(TestCancellation).ConfigureAwait(false);
+            await Host.StartAsync(TestCancellation).ConfigureAwait(true);
 
             using (Kubernetes client = CreateTestClient())
             {
@@ -68,7 +67,7 @@ namespace k8s.Tests
                     false,
                     true,
                     webSocketSubProtol: WebSocketProtocol.ChannelWebSocketProtocol,
-                    cancellationToken: TestCancellation).ConfigureAwait(false);
+                    cancellationToken: TestCancellation).ConfigureAwait(true);
                 Assert.Equal(
                     WebSocketProtocol.ChannelWebSocketProtocol,
                     clientSocket.SubProtocol); // For WebSockets, the Kubernetes API defaults to the binary channel (v1) protocol.
@@ -83,10 +82,10 @@ namespace k8s.Tests
                 const int STDOUT = 1;
                 const string expectedOutput = "This is text send to STDOUT.";
 
-                int bytesSent = await SendMultiplexed(serverSocket, STDOUT, expectedOutput).ConfigureAwait(false);
+                int bytesSent = await SendMultiplexed(serverSocket, STDOUT, expectedOutput).ConfigureAwait(true);
                 testOutput.WriteLine($"Sent {bytesSent} bytes to server socket; receiving from client socket...");
 
-                (string receivedText, byte streamIndex, int bytesReceived) = await ReceiveTextMultiplexed(clientSocket).ConfigureAwait(false);
+                (string receivedText, byte streamIndex, int bytesReceived) = await ReceiveTextMultiplexed(clientSocket).ConfigureAwait(true);
                 testOutput.WriteLine(
                     $"Received {bytesReceived} bytes from client socket ('{receivedText}', stream {streamIndex}).");
 
@@ -95,7 +94,7 @@ namespace k8s.Tests
 
                 await Disconnect(clientSocket, serverSocket,
                     WebSocketCloseStatus.NormalClosure,
-                    "Normal Closure").ConfigureAwait(false);
+                    "Normal Closure").ConfigureAwait(true);
 
                 WebSocketTestAdapter.CompleteTest();
             }
@@ -205,8 +204,8 @@ namespace k8s.Tests
                 {
                     await Assert.ThrowsAsync<ArgumentNullException>(() => client.NamespacedPodExecAsync(
                         "pod-name",
-                        "pod-namespace", "my-container", command, false, null, CancellationToken.None))
-                        .ConfigureAwait(false);
+                        "pod-namespace", "my-container", command, false, null, CancellationToken.None)).ConfigureAwait(true)
+;
                 }
             }
         }
@@ -230,8 +229,8 @@ namespace k8s.Tests
             {
                 var ex = await Assert.ThrowsAsync<KubernetesException>(() => client.NamespacedPodExecAsync(
                     "pod-name",
-                    "pod-namespace", "my-container", command, false, handler, CancellationToken.None))
-                    .ConfigureAwait(false);
+                    "pod-namespace", "my-container", command, false, handler, CancellationToken.None)).ConfigureAwait(true)
+;
                 Assert.Same(status, ex.Status);
             }
         }
@@ -255,7 +254,7 @@ namespace k8s.Tests
             {
                 var ex = await Assert.ThrowsAsync<HttpOperationException>(() =>
                     client.NamespacedPodExecAsync("pod-name", "pod-namespace", "my-container", command, false, handler,
-                        CancellationToken.None)).ConfigureAwait(false);
+                        CancellationToken.None)).ConfigureAwait(true);
                 Assert.Same(exception, ex);
             }
         }
@@ -279,8 +278,8 @@ namespace k8s.Tests
             {
                 var ex = await Assert.ThrowsAsync<Exception>(() => client.NamespacedPodExecAsync(
                     "pod-name",
-                    "pod-namespace", "my-container", command, false, handler, CancellationToken.None))
-                    .ConfigureAwait(false);
+                    "pod-namespace", "my-container", command, false, handler, CancellationToken.None)).ConfigureAwait(true)
+;
                 Assert.Same(exception, ex);
             }
         }
@@ -331,7 +330,7 @@ namespace k8s.Tests
                 using (Kubernetes client = kubernetesMock.Object)
                 {
                     var exitCode = await client.NamespacedPodExecAsync("pod-name", "pod-namespace", "my-container",
-                        command, false, handler, CancellationToken.None).ConfigureAwait(false);
+                        command, false, handler, CancellationToken.None).ConfigureAwait(true);
                     Assert.Equal(1, exitCode);
                 }
             }

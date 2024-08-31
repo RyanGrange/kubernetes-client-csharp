@@ -1,11 +1,11 @@
-﻿using System.Net;
+﻿using Json.Patch;
+using k8s;
+using k8s.Models;
+using System.Net;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Text.Json;
-using Json.Patch;
-using k8s;
-using k8s.Models;
 
 string GenerateCertificate(string name)
 {
@@ -18,10 +18,10 @@ string GenerateCertificate(string name)
     var distinguishedName = new X500DistinguishedName(name);
 
     using var rsa = RSA.Create(4096);
-    var request = new CertificateRequest(distinguishedName, rsa, HashAlgorithmName.SHA256,RSASignaturePadding.Pkcs1);
+    var request = new CertificateRequest(distinguishedName, rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
 
-    request.CertificateExtensions.Add(new X509KeyUsageExtension(X509KeyUsageFlags.DataEncipherment | X509KeyUsageFlags.KeyEncipherment | X509KeyUsageFlags.DigitalSignature , false));
-    request.CertificateExtensions.Add(new X509EnhancedKeyUsageExtension(new OidCollection { new ("1.3.6.1.5.5.7.3.1") }, false));
+    request.CertificateExtensions.Add(new X509KeyUsageExtension(X509KeyUsageFlags.DataEncipherment | X509KeyUsageFlags.KeyEncipherment | X509KeyUsageFlags.DigitalSignature, false));
+    request.CertificateExtensions.Add(new X509EnhancedKeyUsageExtension(new OidCollection { new("1.3.6.1.5.5.7.3.1") }, false));
     request.CertificateExtensions.Add(sanBuilder.Build());
     var csr = request.CreateSigningRequest();
     var pemKey = "-----BEGIN CERTIFICATE REQUEST-----\r\n" +
@@ -36,7 +36,7 @@ IKubernetes client = new Kubernetes(config);
 Console.WriteLine("Starting Request!");
 var name = "demo";
 var x509 = GenerateCertificate(name);
-var encodedCsr= Encoding.UTF8.GetBytes(x509);
+var encodedCsr = Encoding.UTF8.GetBytes(x509);
 
 var request = new V1CertificateSigningRequest
 {
@@ -55,14 +55,14 @@ var request = new V1CertificateSigningRequest
     }
 };
 
-await client.CreateCertificateSigningRequestAsync(request);
+await client.CertificatesV1.CreateCertificateSigningRequestAsync(request);
 
 var serializeOptions = new JsonSerializerOptions
 {
     PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
     WriteIndented = true
 };
-var readCert = await client.ReadCertificateSigningRequestAsync(name);
+var readCert = await client.CertificatesV1.ReadCertificateSigningRequestAsync(name);
 var old = JsonSerializer.SerializeToDocument(readCert, serializeOptions);
 
 var replace = new List<V1CertificateSigningRequestCondition>
@@ -74,4 +74,4 @@ readCert.Status.Conditions = replace;
 var expected = JsonSerializer.SerializeToDocument(readCert, serializeOptions);
 
 var patch = old.CreatePatch(expected);
-await client.PatchCertificateSigningRequestApprovalAsync(new V1Patch(patch, V1Patch.PatchType.JsonPatch), name);
+await client.CertificatesV1.PatchCertificateSigningRequestApprovalAsync(new V1Patch(patch, V1Patch.PatchType.JsonPatch), name);

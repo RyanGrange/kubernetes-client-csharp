@@ -1,14 +1,15 @@
-using System.Collections.Generic;
-using System.Linq;
-using System.Text.RegularExpressions;
 using CaseExtensions;
 using NJsonSchema;
 using NSwag;
-using Nustache.Core;
+using Scriban.Runtime;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text.RegularExpressions;
 
 namespace LibKubernetesGenerator
 {
-    internal class GeneralNameHelper : INustacheHelper
+    internal class GeneralNameHelper : IScriptObjectHelper
     {
         private readonly ClassNameHelper classNameHelper;
 
@@ -17,20 +18,12 @@ namespace LibKubernetesGenerator
             this.classNameHelper = classNameHelper;
         }
 
-        public void RegisterHelper()
+        public void RegisterHelper(ScriptObject scriptObject)
         {
-            Helpers.Register(nameof(GetInterfaceName), GetInterfaceName);
-            Helpers.Register(nameof(GetMethodName), GetMethodName);
-            Helpers.Register(nameof(GetDotNetName), GetDotNetName);
-        }
-
-        public void GetInterfaceName(RenderContext context, IList<object> arguments,
-            IDictionary<string, object> options, RenderBlock fn, RenderBlock inverse)
-        {
-            if (arguments != null && arguments.Count > 0 && arguments[0] != null && arguments[0] is JsonSchema)
-            {
-                context.Write(GetInterfaceName(arguments[0] as JsonSchema));
-            }
+            scriptObject.Import(nameof(GetInterfaceName), new Func<JsonSchema, string>(GetInterfaceName));
+            scriptObject.Import(nameof(GetMethodName), new Func<OpenApiOperation, string, string>(GetMethodName));
+            scriptObject.Import(nameof(GetDotNetName), new Func<string, string, string>(GetDotNetName));
+            scriptObject.Import(nameof(GetDotNetNameOpenApiParameter), new Func<OpenApiParameter, string, string>(GetDotNetNameOpenApiParameter));
         }
 
         private string GetInterfaceName(JsonSchema definition)
@@ -68,44 +61,16 @@ namespace LibKubernetesGenerator
             return string.Join(", ", interfaces);
         }
 
-        public void GetMethodName(RenderContext context, IList<object> arguments, IDictionary<string, object> options,
-            RenderBlock fn, RenderBlock inverse)
+        public string GetDotNetNameOpenApiParameter(OpenApiParameter parameter, string init)
         {
-            if (arguments != null && arguments.Count > 0 && arguments[0] != null && arguments[0] is OpenApiOperation)
+            var name = GetDotNetName(parameter.Name);
+
+            if (init == "true" && !parameter.IsRequired)
             {
-                string suffix = null;
-                if (arguments.Count > 1)
-                {
-                    suffix = arguments[1] as string;
-                }
-
-                context.Write(GetMethodName(arguments[0] as OpenApiOperation, suffix));
+                name += " = null";
             }
-        }
 
-        public void GetDotNetName(RenderContext context, IList<object> arguments, IDictionary<string, object> options,
-            RenderBlock fn, RenderBlock inverse)
-        {
-            if (arguments != null && arguments.Count > 0 && arguments[0] != null && arguments[0] is OpenApiParameter)
-            {
-                var parameter = arguments[0] as OpenApiParameter;
-                context.Write(GetDotNetName(parameter.Name));
-
-                if (arguments.Count > 1 && arguments[1] as string == "true" && !parameter.IsRequired)
-                {
-                    context.Write(" = null");
-                }
-            }
-            else if (arguments != null && arguments.Count > 0 && arguments[0] != null && arguments[0] is string)
-            {
-                var style = "parameter";
-                if (arguments.Count > 1)
-                {
-                    style = arguments[1] as string;
-                }
-
-                context.Write(GetDotNetName((string)arguments[0], style));
-            }
+            return name;
         }
 
         public string GetDotNetName(string jsonName, string style = "parameter")
@@ -113,57 +78,51 @@ namespace LibKubernetesGenerator
             switch (style)
             {
                 case "parameter":
-                    if (jsonName == "namespace")
+                    switch (jsonName)
                     {
-                        return "namespaceParameter";
-                    }
-                    else if (jsonName == "continue")
-                    {
-                        return "continueParameter";
+                        case "namespace":
+                            return "namespaceParameter";
+                        case "continue":
+                            return "continueParameter";
+                        default:
+                            break;
                     }
 
                     break;
 
                 case "fieldctor":
-                    if (jsonName == "namespace")
+
+                    switch (jsonName)
                     {
-                        return "namespaceProperty";
-                    }
-                    else if (jsonName == "continue")
-                    {
-                        return "continueProperty";
-                    }
-                    else if (jsonName == "$ref")
-                    {
-                        return "refProperty";
-                    }
-                    else if (jsonName == "default")
-                    {
-                        return "defaultProperty";
-                    }
-                    else if (jsonName == "operator")
-                    {
-                        return "operatorProperty";
-                    }
-                    else if (jsonName == "$schema")
-                    {
-                        return "schema";
-                    }
-                    else if (jsonName == "enum")
-                    {
-                        return "enumProperty";
-                    }
-                    else if (jsonName == "object")
-                    {
-                        return "objectProperty";
-                    }
-                    else if (jsonName == "readOnly")
-                    {
-                        return "readOnlyProperty";
-                    }
-                    else if (jsonName == "from")
-                    {
-                        return "fromProperty";
+                        case "namespace":
+                            return "namespaceProperty";
+                        case "continue":
+                            return "continueProperty";
+                        case "$ref":
+                            return "refProperty";
+                        case "default":
+                            return "defaultProperty";
+                        case "operator":
+                            return "operatorProperty";
+                        case "$schema":
+                            return "schema";
+                        case "enum":
+                            return "enumProperty";
+                        case "object":
+                            return "objectProperty";
+                        case "readOnly":
+                            return "readOnlyProperty";
+                        case "from":
+                            return "fromProperty";
+                        case "int":
+                            return "intValue";
+                        case "bool":
+                            return "boolValue";
+                        case "string":
+                            return "stringValue";
+
+                        default:
+                            break;
                     }
 
                     if (jsonName.Contains("-"))

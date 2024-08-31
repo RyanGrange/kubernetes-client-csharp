@@ -1,14 +1,15 @@
+using k8s.Authentication;
+using k8s.Exceptions;
 using System.Net.Http;
 using System.Net.Security;
 using System.Security.Cryptography.X509Certificates;
-using System.Threading;
-using k8s.Exceptions;
-using k8s.Autorest;
 
 namespace k8s
 {
     public partial class Kubernetes
     {
+        private readonly JsonSerializerOptions jsonSerializerOptions;
+
         /// <summary>
         ///     Initializes a new instance of the <see cref="Kubernetes" /> class.
         /// </summary>
@@ -22,13 +23,27 @@ namespace k8s
         {
             Initialize();
             ValidateConfig(config);
-            CaCerts = config.SslCaCerts;
-#if NETSTANDARD2_1_OR_GREATER || NET5_0_OR_GREATER
+
+            if (config.SslCaCerts != null)
+            {
+                var caCerts = new X509Certificate2Collection();
+                foreach (var cert in config.SslCaCerts)
+                {
+                    caCerts.Add(new X509Certificate2(cert));
+                }
+
+                CaCerts = caCerts;
+            }
+
             SkipTlsVerify = config.SkipTlsVerify;
-#endif
+            TlsServerName = config.TlsServerName;
             CreateHttpClient(handlers, config);
             InitializeFromConfig(config);
             HttpClientTimeout = config.HttpClientTimeout;
+            jsonSerializerOptions = config.JsonSerializerOptions;
+#if NETSTANDARD2_1_OR_GREATER || NET5_0_OR_GREATER
+            DisableHttp2 = config.DisableHttp2;
+#endif
         }
 
         private void ValidateConfig(KubernetesClientConfiguration config)
@@ -68,45 +83,50 @@ namespace k8s
                 }
                 else
                 {
-                    if (CaCerts == null)
+                    if (CaCerts != null)
                     {
-                        throw new KubeConfigException("A CA must be set when SkipTlsVerify === false");
-                    }
-
 #if NET5_0_OR_GREATER
-                    HttpClientHandler.SslOptions.RemoteCertificateValidationCallback =
+                        HttpClientHandler.SslOptions.RemoteCertificateValidationCallback =
 #else
-                    HttpClientHandler.ServerCertificateCustomValidationCallback =
+                        HttpClientHandler.ServerCertificateCustomValidationCallback =
 #endif
-                        (sender, certificate, chain, sslPolicyErrors) =>
-                        {
-                            return CertificateValidationCallBack(sender, CaCerts, certificate, chain,
-                                sslPolicyErrors);
-                        };
+                            (sender, certificate, chain, sslPolicyErrors) =>
+                            {
+                                return CertificateValidationCallBack(sender, CaCerts, certificate, chain,
+                                    sslPolicyErrors);
+                            };
+                    }
                 }
             }
 
             // set credentails for the kubernetes client
             SetCredentials(config);
 
-            var clientCert = CertUtils.GetClientCert(config);
-            if (clientCert != null)
+            ClientCert = CertUtils.GetClientCert(config);
+            if (ClientCert != null)
             {
 #if NET5_0_OR_GREATER
-                HttpClientHandler.SslOptions.ClientCertificates.Add(clientCert);
+                HttpClientHandler.SslOptions.ClientCertificates.Add(ClientCert);
+
+                // TODO this is workaround for net7.0, remove it when the issue is fixed
+                // seems the client certificate is cached and cannot be updated
+                HttpClientHandler.SslOptions.LocalCertificateSelectionCallback = (sender, targetHost, localCertificates, remoteCertificate, acceptableIssuers) =>
+                {
+                    return ClientCert;
+                };
 #else
-                HttpClientHandler.ClientCertificates.Add(clientCert);
+                HttpClientHandler.ClientCertificates.Add(ClientCert);
 #endif
             }
         }
 
         private X509Certificate2Collection CaCerts { get; }
 
-#if NETSTANDARD2_1_OR_GREATER || NET5_0_OR_GREATER
-        private X509Certificate2 ClientCert { get; }
+        private X509Certificate2 ClientCert { get; set; }
 
         private bool SkipTlsVerify { get; }
-#endif
+
+        private string TlsServerName { get; }
 
         // NOTE: this method replicates the logic that the base ServiceClient uses except that it doesn't insert the RetryDelegatingHandler
         // and it does insert the WatcherDelegatingHandler. we don't want the RetryDelegatingHandler because it has a very broad definition
@@ -120,6 +140,7 @@ namespace k8s
                 KeepAlivePingPolicy = HttpKeepAlivePingPolicy.WithActiveRequests,
                 KeepAlivePingDelay = TimeSpan.FromMinutes(3),
                 KeepAlivePingTimeout = TimeSpan.FromSeconds(30),
+                EnableMultipleHttp2Connections = true,
             };
 
             HttpClientHandler.SslOptions.ClientCertificates = new X509Certificate2Collection();
@@ -148,8 +169,6 @@ namespace k8s
                 Timeout = Timeout.InfiniteTimeSpan,
             };
         }
-
-
 
         /// <summary>
         ///     Set credentials for the Client
@@ -203,13 +222,11 @@ namespace k8s
 
                 var isTrusted = false;
 
-                var rootCert = chain.ChainElements[chain.ChainElements.Count - 1].Certificate;
-
                 // Make sure that one of our trusted certs exists in the chain provided by the server.
                 //
                 foreach (var cert in caCerts)
                 {
-                    if (rootCert.RawData.SequenceEqual(cert.RawData))
+                    if (chain.Build(cert))
                     {
                         isTrusted = true;
                         break;

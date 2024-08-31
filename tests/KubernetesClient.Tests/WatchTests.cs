@@ -1,3 +1,7 @@
+using k8s.Models;
+using k8s.Tests.Mock;
+using Microsoft.AspNetCore.Http;
+using Nito.AsyncEx;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -7,10 +11,6 @@ using System.Net.Http;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using k8s.Models;
-using k8s.Tests.Mock;
-using Microsoft.AspNetCore.Http;
-using Nito.AsyncEx;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -54,12 +54,12 @@ namespace k8s.Tests
                 var client = new Kubernetes(new KubernetesClientConfiguration { Host = server.Uri.ToString() });
 
                 // did not pass watch param
-                var listTask = client.ListNamespacedPodWithHttpMessagesAsync("default", watch: true);
+                var listTask = client.CoreV1.ListNamespacedPodWithHttpMessagesAsync("default", watch: true);
                 var onErrorCalled = false;
 
                 using (listTask.Watch<V1Pod, V1PodList>((type, item) => { }, e => { onErrorCalled = true; }))
                 {
-                    await Task.Delay(TimeSpan.FromSeconds(1)).ConfigureAwait(false); // delay for onerror to be called
+                    await Task.Delay(TimeSpan.FromSeconds(1)).ConfigureAwait(true); // delay for onerror to be called
                 }
 
                 Assert.True(onErrorCalled);
@@ -68,11 +68,11 @@ namespace k8s.Tests
                 // server did not response line by line
                 await Assert.ThrowsAnyAsync<Exception>(() =>
                 {
-                    return client.ListNamespacedPodWithHttpMessagesAsync("default", watch: true);
+                    return client.CoreV1.ListNamespacedPodWithHttpMessagesAsync("default", watch: true);
 
                     // this line did not throw
                     // listTask.Watch<Corev1Pod>((type, item) => { });
-                }).ConfigureAwait(false);
+                }).ConfigureAwait(true);
             }
         }
 
@@ -85,20 +85,20 @@ namespace k8s.Tests
             using (var server = new MockKubeApiServer(testOutput, async httpContext =>
             {
                 // block until reponse watcher obj created
-                await created.WaitAsync().ConfigureAwait(false);
-                await WriteStreamLine(httpContext, MockAddedEventStreamLine).ConfigureAwait(false);
+                await created.WaitAsync().ConfigureAwait(true);
+                await WriteStreamLine(httpContext, MockAddedEventStreamLine).ConfigureAwait(true);
                 return false;
             }))
             {
                 var client = new Kubernetes(new KubernetesClientConfiguration { Host = server.Uri.ToString() });
 
 
-                var listTask = client.ListNamespacedPodWithHttpMessagesAsync("default", watch: true);
+                var listTask = client.CoreV1.ListNamespacedPodWithHttpMessagesAsync("default", watch: true);
                 using (listTask.Watch<V1Pod, V1PodList>((type, item) => { eventsReceived.Set(); }))
                 {
                     // here watcher is ready to use, but http server has not responsed yet.
                     created.Set();
-                    await Task.WhenAny(eventsReceived.WaitAsync(), Task.Delay(TestTimeout)).ConfigureAwait(false);
+                    await Task.WhenAny(eventsReceived.WaitAsync(), Task.Delay(TestTimeout)).ConfigureAwait(true);
                 }
 
                 Assert.True(eventsReceived.IsSet);
@@ -121,20 +121,20 @@ namespace k8s.Tests
                         httpContext.Response.StatusCode = (int)HttpStatusCode.OK;
                         httpContext.Response.ContentLength = null;
 
-                        await WriteStreamLine(httpContext, MockKubeApiServer.MockPodResponse).ConfigureAwait(false);
-                        await WriteStreamLine(httpContext, MockBadStreamLine).ConfigureAwait(false);
-                        await WriteStreamLine(httpContext, MockAddedEventStreamLine).ConfigureAwait(false);
-                        await WriteStreamLine(httpContext, MockBadStreamLine).ConfigureAwait(false);
-                        await WriteStreamLine(httpContext, MockModifiedStreamLine).ConfigureAwait(false);
+                        await WriteStreamLine(httpContext, MockKubeApiServer.MockPodResponse).ConfigureAwait(true);
+                        await WriteStreamLine(httpContext, MockBadStreamLine).ConfigureAwait(true);
+                        await WriteStreamLine(httpContext, MockAddedEventStreamLine).ConfigureAwait(true);
+                        await WriteStreamLine(httpContext, MockBadStreamLine).ConfigureAwait(true);
+                        await WriteStreamLine(httpContext, MockModifiedStreamLine).ConfigureAwait(true);
 
                         // make server alive, cannot set to int.max as of it would block response
-                        await serverShutdown.WaitAsync().ConfigureAwait(false);
+                        await serverShutdown.WaitAsync().ConfigureAwait(true);
                         return false;
                     }))
             {
                 var client = new Kubernetes(new KubernetesClientConfiguration { Host = server.Uri.ToString() });
 
-                var listTask = await client.ListNamespacedPodWithHttpMessagesAsync("default", watch: true).ConfigureAwait(false);
+                var listTask = await client.CoreV1.ListNamespacedPodWithHttpMessagesAsync("default", watch: true).ConfigureAwait(true);
 
                 var events = new HashSet<WatchEventType>();
                 var errors = 0;
@@ -157,7 +157,7 @@ namespace k8s.Tests
                     connectionClosed.Set);
 
                 // wait server yields all events
-                await Task.WhenAny(eventsReceived.WaitAsync(), Task.Delay(TestTimeout)).ConfigureAwait(false);
+                await Task.WhenAny(eventsReceived.WaitAsync(), Task.Delay(TestTimeout)).ConfigureAwait(true);
 
                 Assert.True(
                     eventsReceived.CurrentCount == 0,
@@ -173,7 +173,7 @@ namespace k8s.Tests
                 // Let the server know it can initiate a shut down.
                 serverShutdown.Set();
 
-                await Task.WhenAny(connectionClosed.WaitAsync(), Task.Delay(TestTimeout)).ConfigureAwait(false);
+                await Task.WhenAny(connectionClosed.WaitAsync(), Task.Delay(TestTimeout)).ConfigureAwait(true);
                 Assert.True(connectionClosed.IsSet);
             }
         }
@@ -187,15 +187,15 @@ namespace k8s.Tests
 
             using (var server = new MockKubeApiServer(testOutput, async httpContext =>
             {
-                await WriteStreamLine(httpContext, MockAddedEventStreamLine).ConfigureAwait(false);
-                await serverShutdown.WaitAsync().ConfigureAwait(false);
+                await WriteStreamLine(httpContext, MockAddedEventStreamLine).ConfigureAwait(true);
+                await serverShutdown.WaitAsync().ConfigureAwait(true);
 
                 return false;
             }))
             {
                 var client = new Kubernetes(new KubernetesClientConfiguration { Host = server.Uri.ToString() });
 
-                var listTask = await client.ListNamespacedPodWithHttpMessagesAsync("default", watch: true).ConfigureAwait(false);
+                var listTask = await client.CoreV1.ListNamespacedPodWithHttpMessagesAsync("default", watch: true).ConfigureAwait(true);
 
                 var events = new HashSet<WatchEventType>();
 
@@ -212,7 +212,7 @@ namespace k8s.Tests
                     onClosed: connectionClosed.Set);
 
                 // wait at least an event
-                await Task.WhenAny(eventsReceived.WaitAsync(), Task.Delay(TestTimeout)).ConfigureAwait(false);
+                await Task.WhenAny(eventsReceived.WaitAsync(), Task.Delay(TestTimeout)).ConfigureAwait(true);
                 Assert.True(
                     eventsReceived.CurrentCount == 0,
                     "Timed out waiting for events.");
@@ -224,7 +224,7 @@ namespace k8s.Tests
 
                 events.Clear();
 
-                await Task.WhenAny(connectionClosed.WaitAsync(), Task.Delay(TestTimeout)).ConfigureAwait(false);
+                await Task.WhenAny(connectionClosed.WaitAsync(), Task.Delay(TestTimeout)).ConfigureAwait(true);
 
                 Assert.False(watcher.Watching);
                 Assert.True(connectionClosed.IsSet);
@@ -243,19 +243,19 @@ namespace k8s.Tests
 
             using (var server = new MockKubeApiServer(testOutput, async httpContext =>
             {
-                await WriteStreamLine(httpContext, MockAddedEventStreamLine).ConfigureAwait(false);
-                await WriteStreamLine(httpContext, MockDeletedStreamLine).ConfigureAwait(false);
-                await WriteStreamLine(httpContext, MockModifiedStreamLine).ConfigureAwait(false);
-                await WriteStreamLine(httpContext, MockErrorStreamLine).ConfigureAwait(false);
+                await WriteStreamLine(httpContext, MockAddedEventStreamLine).ConfigureAwait(true);
+                await WriteStreamLine(httpContext, MockDeletedStreamLine).ConfigureAwait(true);
+                await WriteStreamLine(httpContext, MockModifiedStreamLine).ConfigureAwait(true);
+                await WriteStreamLine(httpContext, MockErrorStreamLine).ConfigureAwait(true);
 
                 // make server alive, cannot set to int.max as of it would block response
-                await serverShutdown.WaitAsync().ConfigureAwait(false);
+                await serverShutdown.WaitAsync().ConfigureAwait(true);
                 return false;
             }))
             {
                 var client = new Kubernetes(new KubernetesClientConfiguration { Host = server.Uri.ToString() });
 
-                var listTask = await client.ListNamespacedPodWithHttpMessagesAsync("default", watch: true).ConfigureAwait(false);
+                var listTask = await client.CoreV1.ListNamespacedPodWithHttpMessagesAsync("default", watch: true).ConfigureAwait(true);
 
                 var events = new HashSet<WatchEventType>();
                 var errors = 0;
@@ -278,7 +278,7 @@ namespace k8s.Tests
                     waitForClosed.Set);
 
                 // wait server yields all events
-                await Task.WhenAny(eventsReceived.WaitAsync(), Task.Delay(TestTimeout)).ConfigureAwait(false);
+                await Task.WhenAny(eventsReceived.WaitAsync(), Task.Delay(TestTimeout)).ConfigureAwait(true);
 
                 Assert.True(
                     eventsReceived.CurrentCount == 0,
@@ -295,7 +295,7 @@ namespace k8s.Tests
 
                 serverShutdown.Set();
 
-                await Task.WhenAny(waitForClosed.WaitAsync(), Task.Delay(TestTimeout)).ConfigureAwait(false);
+                await Task.WhenAny(waitForClosed.WaitAsync(), Task.Delay(TestTimeout)).ConfigureAwait(true);
                 Assert.True(waitForClosed.IsSet);
                 Assert.False(watcher.Watching);
             }
@@ -310,21 +310,21 @@ namespace k8s.Tests
 
             using (var server = new MockKubeApiServer(testOutput, async httpContext =>
             {
-                await WriteStreamLine(httpContext, MockKubeApiServer.MockPodResponse).ConfigureAwait(false);
-                await Task.Delay(TimeSpan.FromSeconds(120)).ConfigureAwait(false); // The default timeout is 100 seconds
-                await WriteStreamLine(httpContext, MockAddedEventStreamLine).ConfigureAwait(false);
-                await WriteStreamLine(httpContext, MockDeletedStreamLine).ConfigureAwait(false);
-                await WriteStreamLine(httpContext, MockModifiedStreamLine).ConfigureAwait(false);
-                await WriteStreamLine(httpContext, MockErrorStreamLine).ConfigureAwait(false);
+                await WriteStreamLine(httpContext, MockKubeApiServer.MockPodResponse).ConfigureAwait(true);
+                await Task.Delay(TimeSpan.FromSeconds(120)).ConfigureAwait(true); // The default timeout is 100 seconds
+                await WriteStreamLine(httpContext, MockAddedEventStreamLine).ConfigureAwait(true);
+                await WriteStreamLine(httpContext, MockDeletedStreamLine).ConfigureAwait(true);
+                await WriteStreamLine(httpContext, MockModifiedStreamLine).ConfigureAwait(true);
+                await WriteStreamLine(httpContext, MockErrorStreamLine).ConfigureAwait(true);
 
                 // make server alive, cannot set to int.max as of it would block response
-                await serverShutdown.WaitAsync().ConfigureAwait(false);
+                await serverShutdown.WaitAsync().ConfigureAwait(true);
                 return false;
             }))
             {
                 var client = new Kubernetes(new KubernetesClientConfiguration { Host = server.Uri.ToString() });
 
-                var listTask = await client.ListNamespacedPodWithHttpMessagesAsync("default", watch: true).ConfigureAwait(false);
+                var listTask = await client.CoreV1.ListNamespacedPodWithHttpMessagesAsync("default", watch: true).ConfigureAwait(true);
 
                 var events = new HashSet<WatchEventType>();
                 var errors = 0;
@@ -347,7 +347,7 @@ namespace k8s.Tests
                     connectionClosed.Set);
 
                 // wait server yields all events
-                await Task.WhenAny(eventsReceived.WaitAsync(), Task.Delay(TestTimeout)).ConfigureAwait(false);
+                await Task.WhenAny(eventsReceived.WaitAsync(), Task.Delay(TestTimeout)).ConfigureAwait(true);
 
                 Assert.True(
                     eventsReceived.CurrentCount == 0,
@@ -364,7 +364,7 @@ namespace k8s.Tests
 
                 serverShutdown.Set();
 
-                await Task.WhenAny(connectionClosed.WaitAsync(), Task.Delay(TestTimeout)).ConfigureAwait(false);
+                await Task.WhenAny(connectionClosed.WaitAsync(), Task.Delay(TestTimeout)).ConfigureAwait(true);
                 Assert.True(connectionClosed.IsSet);
             }
         }
@@ -379,14 +379,14 @@ namespace k8s.Tests
 
             using (var server = new MockKubeApiServer(testOutput, async httpContext =>
             {
-                await WriteStreamLine(httpContext, MockKubeApiServer.MockPodResponse).ConfigureAwait(false);
-                await waitForException.WaitAsync().ConfigureAwait(false);
+                await WriteStreamLine(httpContext, MockKubeApiServer.MockPodResponse).ConfigureAwait(true);
+                await waitForException.WaitAsync().ConfigureAwait(true);
                 throw new IOException("server down");
             }))
             {
                 var client = new Kubernetes(new KubernetesClientConfiguration { Host = server.Uri.ToString() });
 
-                var listTask = await client.ListNamespacedPodWithHttpMessagesAsync("default", watch: true).ConfigureAwait(false);
+                var listTask = await client.CoreV1.ListNamespacedPodWithHttpMessagesAsync("default", watch: true).ConfigureAwait(true);
 
                 waitForException.Set();
                 Watcher<V1Pod> watcher;
@@ -400,16 +400,21 @@ namespace k8s.Tests
                     waitForClosed.Set);
 
                 // wait server down
-                await Task.WhenAny(exceptionReceived.WaitAsync(), Task.Delay(TestTimeout)).ConfigureAwait(false);
+                await Task.WhenAny(exceptionReceived.WaitAsync(), Task.Delay(TestTimeout)).ConfigureAwait(true);
 
                 Assert.True(
                     exceptionReceived.IsSet,
                     "Timed out waiting for exception");
 
-                await Task.WhenAny(waitForClosed.WaitAsync(), Task.Delay(TestTimeout)).ConfigureAwait(false);
+                await Task.WhenAny(waitForClosed.WaitAsync(), Task.Delay(TestTimeout)).ConfigureAwait(true);
                 Assert.True(waitForClosed.IsSet);
                 Assert.False(watcher.Watching);
+
+#if NET8_0_OR_GREATER
+                Assert.IsType<HttpIOException>(exceptionCatched);
+#else
                 Assert.IsType<IOException>(exceptionCatched);
+#endif
             }
         }
 
@@ -434,24 +439,24 @@ namespace k8s.Tests
 
             using (var server = new MockKubeApiServer(testOutput, async httpContext =>
             {
-                await WriteStreamLine(httpContext, MockKubeApiServer.MockPodResponse).ConfigureAwait(false);
-                await WriteStreamLine(httpContext, MockAddedEventStreamLine).ConfigureAwait(false);
+                await WriteStreamLine(httpContext, MockKubeApiServer.MockPodResponse).ConfigureAwait(true);
+                await WriteStreamLine(httpContext, MockAddedEventStreamLine).ConfigureAwait(true);
 
                 // make server alive, cannot set to int.max as of it would block response
-                await serverShutdown.WaitAsync().ConfigureAwait(false);
+                await serverShutdown.WaitAsync().ConfigureAwait(true);
                 return false;
             }))
             {
                 var handler1 = new DummyHandler();
                 var handler2 = new DummyHandler();
 
-                var client = new Kubernetes(new KubernetesClientConfiguration { Host = server.Uri.ToString() }, handler1,
-                    handler2);
+                var client = new Kubernetes(
+                    new KubernetesClientConfiguration { Host = server.Uri.ToString() }, handler1, handler2);
 
                 Assert.False(handler1.Called);
                 Assert.False(handler2.Called);
 
-                var listTask = await client.ListNamespacedPodWithHttpMessagesAsync("default", watch: true).ConfigureAwait(false);
+                var listTask = await client.CoreV1.ListNamespacedPodWithHttpMessagesAsync("default", watch: true).ConfigureAwait(true);
 
                 var events = new HashSet<WatchEventType>();
 
@@ -463,7 +468,7 @@ namespace k8s.Tests
                     });
 
                 // wait server yields all events
-                await Task.WhenAny(eventsReceived.WaitAsync(), Task.Delay(TestTimeout)).ConfigureAwait(false);
+                await Task.WhenAny(eventsReceived.WaitAsync(), Task.Delay(TestTimeout)).ConfigureAwait(true);
 
                 Assert.True(
                     eventsReceived.CurrentCount == 0,
@@ -487,13 +492,13 @@ namespace k8s.Tests
 
             using (var server = new MockKubeApiServer(testOutput, async httpContext =>
             {
-                await WriteStreamLine(httpContext, MockAddedEventStreamLine).ConfigureAwait(false);
-                await WriteStreamLine(httpContext, MockDeletedStreamLine).ConfigureAwait(false);
-                await WriteStreamLine(httpContext, MockModifiedStreamLine).ConfigureAwait(false);
-                await WriteStreamLine(httpContext, MockErrorStreamLine).ConfigureAwait(false);
+                await WriteStreamLine(httpContext, MockAddedEventStreamLine).ConfigureAwait(true);
+                await WriteStreamLine(httpContext, MockDeletedStreamLine).ConfigureAwait(true);
+                await WriteStreamLine(httpContext, MockModifiedStreamLine).ConfigureAwait(true);
+                await WriteStreamLine(httpContext, MockErrorStreamLine).ConfigureAwait(true);
 
                 // make server alive, cannot set to int.max as of it would block response
-                await serverShutdown.WaitAsync().ConfigureAwait(false);
+                await serverShutdown.WaitAsync().ConfigureAwait(true);
                 return false;
             }))
             {
@@ -502,7 +507,7 @@ namespace k8s.Tests
                 var events = new HashSet<WatchEventType>();
                 var errors = 0;
 
-                var watcher = client.ListNamespacedPodWithHttpMessagesAsync("default", fieldSelector: $"metadata.name=${"myPod"}", watch: true).Watch<V1Pod, V1PodList>(
+                var watcher = client.CoreV1.ListNamespacedPodWithHttpMessagesAsync("default", fieldSelector: $"metadata.name=${"myPod"}", watch: true).Watch<V1Pod, V1PodList>(
                     onEvent:
                     (type, item) =>
                     {
@@ -522,7 +527,7 @@ namespace k8s.Tests
                     onClosed: connectionClosed.Set);
 
                 // wait server yields all events
-                await Task.WhenAny(eventsReceived.WaitAsync(), Task.Delay(TestTimeout)).ConfigureAwait(false);
+                await Task.WhenAny(eventsReceived.WaitAsync(), Task.Delay(TestTimeout)).ConfigureAwait(true);
 
                 Assert.True(
                     eventsReceived.CurrentCount == 0,
@@ -539,7 +544,7 @@ namespace k8s.Tests
 
                 serverShutdown.Set();
 
-                await Task.WhenAny(connectionClosed.WaitAsync(), Task.Delay(TestTimeout)).ConfigureAwait(false);
+                await Task.WhenAny(connectionClosed.WaitAsync(), Task.Delay(TestTimeout)).ConfigureAwait(true);
                 Assert.True(connectionClosed.IsSet);
             }
         }
@@ -549,8 +554,8 @@ namespace k8s.Tests
         {
             using var server = new MockKubeApiServer(testOutput, async httpContext =>
             {
-                await Task.Delay(TimeSpan.FromSeconds(120)).ConfigureAwait(false); // The default timeout is 100 seconds
-                await WriteStreamLine(httpContext, MockKubeApiServer.MockPodResponse).ConfigureAwait(false);
+                await Task.Delay(TimeSpan.FromSeconds(120)).ConfigureAwait(true); // The default timeout is 100 seconds
+                await WriteStreamLine(httpContext, MockKubeApiServer.MockPodResponse).ConfigureAwait(true);
 
                 return false;
             });
@@ -563,8 +568,8 @@ namespace k8s.Tests
                     Host = server.Uri.ToString(),
                     HttpClientTimeout = TimeSpan.FromSeconds(5),
                 });
-                await client.ListNamespacedPodWithHttpMessagesAsync("default").ConfigureAwait(false);
-            }).ConfigureAwait(false);
+                await client.CoreV1.ListNamespacedPodWithHttpMessagesAsync("default").ConfigureAwait(true);
+            }).ConfigureAwait(true);
 
             // cts
             await Assert.ThrowsAsync<TaskCanceledException>(async () =>
@@ -575,8 +580,8 @@ namespace k8s.Tests
                 {
                     Host = server.Uri.ToString(),
                 });
-                await client.ListNamespacedPodWithHttpMessagesAsync("default", cancellationToken: cts.Token).ConfigureAwait(false);
-            }).ConfigureAwait(false);
+                await client.CoreV1.ListNamespacedPodWithHttpMessagesAsync("default", cancellationToken: cts.Token).ConfigureAwait(true);
+            }).ConfigureAwait(true);
         }
 
         [Fact]
@@ -587,14 +592,14 @@ namespace k8s.Tests
 
             using (var server = new MockKubeApiServer(testOutput, async httpContext =>
             {
-                await Task.Delay(TimeSpan.FromSeconds(120)).ConfigureAwait(false); // The default timeout is 100 seconds
-                await WriteStreamLine(httpContext, MockAddedEventStreamLine).ConfigureAwait(false);
-                await WriteStreamLine(httpContext, MockDeletedStreamLine).ConfigureAwait(false);
-                await WriteStreamLine(httpContext, MockModifiedStreamLine).ConfigureAwait(false);
-                await WriteStreamLine(httpContext, MockErrorStreamLine).ConfigureAwait(false);
+                await Task.Delay(TimeSpan.FromSeconds(120)).ConfigureAwait(true); // The default timeout is 100 seconds
+                await WriteStreamLine(httpContext, MockAddedEventStreamLine).ConfigureAwait(true);
+                await WriteStreamLine(httpContext, MockDeletedStreamLine).ConfigureAwait(true);
+                await WriteStreamLine(httpContext, MockModifiedStreamLine).ConfigureAwait(true);
+                await WriteStreamLine(httpContext, MockErrorStreamLine).ConfigureAwait(true);
 
                 // make server alive, cannot set to int.max as of it would block response
-                await serverShutdown.WaitAsync().ConfigureAwait(false);
+                await serverShutdown.WaitAsync().ConfigureAwait(true);
                 return false;
             }))
             {
@@ -603,7 +608,7 @@ namespace k8s.Tests
                 var events = new HashSet<WatchEventType>();
                 var errors = 0;
 
-                var watcher = client.ListNamespacedPodWithHttpMessagesAsync("default", fieldSelector: $"metadata.name=${"myPod"}", watch: true).Watch<V1Pod, V1PodList>(
+                var watcher = client.CoreV1.ListNamespacedPodWithHttpMessagesAsync("default", fieldSelector: $"metadata.name=${"myPod"}", watch: true).Watch<V1Pod, V1PodList>(
                     onEvent:
                     (type, item) =>
                     {
@@ -622,7 +627,7 @@ namespace k8s.Tests
                     });
 
                 // wait server yields all events
-                await Task.WhenAny(eventsReceived.WaitAsync(), Task.Delay(TestTimeout)).ConfigureAwait(false);
+                await Task.WhenAny(eventsReceived.WaitAsync(), Task.Delay(TestTimeout)).ConfigureAwait(true);
 
                 Assert.True(
                     eventsReceived.CurrentCount == 0,
@@ -649,8 +654,8 @@ namespace k8s.Tests
             using (var server = new MockKubeApiServer(testOutput, async httpContext =>
             {
                 httpContext.Response.StatusCode = 200;
-                await httpContext.Response.Body.FlushAsync().ConfigureAwait(false);
-                await Task.Delay(TimeSpan.FromSeconds(5)).ConfigureAwait(false); // The default timeout is 100 seconds
+                await httpContext.Response.Body.FlushAsync().ConfigureAwait(true);
+                await Task.Delay(TimeSpan.FromSeconds(5)).ConfigureAwait(true); // The default timeout is 100 seconds
 
                 return true;
             }, resp: ""))
@@ -662,9 +667,9 @@ namespace k8s.Tests
 
                 await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
                 {
-                    await client.ListNamespacedPodWithHttpMessagesAsync("default", watch: true,
-                        cancellationToken: cts.Token).ConfigureAwait(false);
-                }).ConfigureAwait(false);
+                    await client.CoreV1.ListNamespacedPodWithHttpMessagesAsync("default", watch: true,
+                        cancellationToken: cts.Token).ConfigureAwait(true);
+                }).ConfigureAwait(true);
             }
         }
 
@@ -728,16 +733,17 @@ namespace k8s.Tests
         {
             var server = new MockKubeApiServer(testOutput, async httpContext =>
             {
-                await WriteStreamLine(httpContext, MockAddedEventStreamLine).ConfigureAwait(false);
+                await WriteStreamLine(httpContext, MockAddedEventStreamLine).ConfigureAwait(true);
                 return false;
             });
 
-            var h = new CheckHeaderDelegatingHandler();
-            var client = new Kubernetes(new KubernetesClientConfiguration { Host = server.Uri.ToString() }, h);
+            var handler = new CheckHeaderDelegatingHandler();
+            var client = new Kubernetes(
+                new KubernetesClientConfiguration { Host = server.Uri.ToString() }, handler);
 
-            Assert.Null(h.Version);
-            await client.ListNamespacedPodWithHttpMessagesAsync("default", watch: true).ConfigureAwait(false);
-            Assert.Equal(HttpVersion.Version20, h.Version);
+            Assert.Null(handler.Version);
+            await client.CoreV1.ListNamespacedPodWithHttpMessagesAsync("default", watch: true).ConfigureAwait(true);
+            Assert.Equal(HttpVersion.Version20, handler.Version);
         }
     }
 }

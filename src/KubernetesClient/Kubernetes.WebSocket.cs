@@ -1,13 +1,9 @@
-using k8s.Models;
-using k8s.Autorest;
+using System.Globalization;
 using System.Net;
 using System.Net.Http;
 using System.Net.WebSockets;
 using System.Security.Cryptography.X509Certificates;
-using System.Threading;
-using System.Threading.Tasks;
 using System.Text;
-using System.Globalization;
 
 namespace k8s
 {
@@ -84,8 +80,10 @@ namespace k8s
             }
 
             // Construct URL
-            var uriBuilder = new UriBuilder(BaseUri);
-            uriBuilder.Scheme = BaseUri.Scheme == "https" ? "wss" : "ws";
+            var uriBuilder = new UriBuilder(BaseUri)
+            {
+                Scheme = BaseUri.Scheme == "https" ? "wss" : "ws",
+            };
 
             if (!uriBuilder.Path.EndsWith("/", StringComparison.InvariantCulture))
             {
@@ -143,8 +141,10 @@ namespace k8s
 
 
             // Construct URL
-            var uriBuilder = new UriBuilder(BaseUri);
-            uriBuilder.Scheme = BaseUri.Scheme == "https" ? "wss" : "ws";
+            var uriBuilder = new UriBuilder(BaseUri)
+            {
+                Scheme = BaseUri.Scheme == "https" ? "wss" : "ws",
+            };
 
             if (!uriBuilder.Path.EndsWith("/", StringComparison.InvariantCulture))
             {
@@ -187,8 +187,10 @@ namespace k8s
             }
 
             // Construct URL
-            var uriBuilder = new UriBuilder(BaseUri);
-            uriBuilder.Scheme = BaseUri.Scheme == "https" ? "wss" : "ws";
+            var uriBuilder = new UriBuilder(BaseUri)
+            {
+                Scheme = BaseUri.Scheme == "https" ? "wss" : "ws",
+            };
 
             if (!uriBuilder.Path.EndsWith("/", StringComparison.InvariantCulture))
             {
@@ -210,6 +212,9 @@ namespace k8s
                 cancellationToken);
         }
 
+        partial void BeforeRequest();
+        partial void AfterRequest();
+
         protected async Task<WebSocket> StreamConnectAsync(Uri uri, string webSocketSubProtocol = null, Dictionary<string, List<string>> customHeaders = null, CancellationToken cancellationToken = default)
         {
             if (uri == null)
@@ -230,11 +235,6 @@ namespace k8s
             }
 
             // Set Credentials
-            if (this.ClientCert != null)
-            {
-                webSocketBuilder.AddClientCertificate(this.ClientCert);
-            }
-
             if (this.HttpClientHandler != null)
             {
 #if NET5_0_OR_GREATER
@@ -280,8 +280,8 @@ namespace k8s
             WebSocket webSocket = null;
             try
             {
-                webSocket = await webSocketBuilder.BuildAndConnectAsync(uri, CancellationToken.None)
-                    .ConfigureAwait(false);
+                BeforeRequest();
+                webSocket = await webSocketBuilder.BuildAndConnectAsync(uri, cancellationToken).ConfigureAwait(false);
             }
             catch (WebSocketException wse) when (wse.WebSocketErrorCode == WebSocketError.HeaderError ||
                                                  (wse.InnerException is WebSocketException &&
@@ -290,8 +290,10 @@ namespace k8s
             {
                 // This usually indicates the server sent an error message, like 400 Bad Request. Unfortunately, the WebSocket client
                 // class doesn't give us a lot of information about what went wrong. So, retry the connection.
-                var uriBuilder = new UriBuilder(uri);
-                uriBuilder.Scheme = uri.Scheme == "wss" ? "https" : "http";
+                var uriBuilder = new UriBuilder(uri)
+                {
+                    Scheme = uri.Scheme == "wss" ? "https" : "http",
+                };
 
                 var response = await HttpClient.GetAsync(uriBuilder.Uri, cancellationToken).ConfigureAwait(false);
 
@@ -323,7 +325,7 @@ namespace k8s
                             $"The operation returned an invalid status code: {response.StatusCode}", wse)
                         {
                             Response = new HttpResponseMessageWrapper(response, content),
-                            Body = status != null ? (object)status : content,
+                            Body = status != null ? status : content,
                         };
 
                     response.Dispose();
@@ -334,6 +336,10 @@ namespace k8s
             catch (Exception)
             {
                 throw;
+            }
+            finally
+            {
+                AfterRequest();
             }
 
             return webSocket;

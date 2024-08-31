@@ -23,13 +23,17 @@ namespace k8s.Tests
         [Fact]
         public async Task WebSocketNamespacedPodExecAsync()
         {
-            Kubernetes client = new Kubernetes(new KubernetesClientConfiguration()
+            var clientConfiguration = new KubernetesClientConfiguration()
             {
                 Host = "http://localhost",
                 Username = "my-user",
                 Password = "my-secret-password",
-            });
-            client.BaseUri = new Uri("http://localhost");
+            };
+
+            var client = new Kubernetes(clientConfiguration)
+            {
+                BaseUri = new Uri("http://localhost"),
+            };
 
             MockWebSocketBuilder mockWebSocketBuilder = new MockWebSocketBuilder();
             client.CreateWebSocketBuilder = () => mockWebSocketBuilder;
@@ -47,7 +51,7 @@ namespace k8s.Tests
                 {
                     { "X-My-Header", new List<string>() { "myHeaderValue", "myHeaderValue2" } },
                 },
-                cancellationToken: CancellationToken.None).ConfigureAwait(false);
+                cancellationToken: CancellationToken.None).ConfigureAwait(true);
 
             var expectedHeaders = new Dictionary<string, string>()
             {
@@ -87,7 +91,7 @@ namespace k8s.Tests
                 {
                     { "X-My-Header", new List<string>() { "myHeaderValue", "myHeaderValue2" } },
                 },
-                cancellationToken: CancellationToken.None).ConfigureAwait(false);
+                cancellationToken: CancellationToken.None).ConfigureAwait(true);
 
             var expectedHeaders = new Dictionary<string, string>()
             {
@@ -113,8 +117,10 @@ namespace k8s.Tests
                 Host = "http://localhost",
                 Username = "my-user",
                 Password = "my-secret-password",
-            });
-            client.BaseUri = new Uri("http://localhost");
+            })
+            {
+                BaseUri = new Uri("http://localhost"),
+            };
 
             MockWebSocketBuilder mockWebSocketBuilder = new MockWebSocketBuilder();
             client.CreateWebSocketBuilder = () => mockWebSocketBuilder;
@@ -131,7 +137,7 @@ namespace k8s.Tests
                 {
                     { "X-My-Header", new List<string>() { "myHeaderValue", "myHeaderValue2" } },
                 },
-                cancellationToken: CancellationToken.None).ConfigureAwait(false);
+                cancellationToken: CancellationToken.None).ConfigureAwait(true);
 
             var expectedHeaders = new Dictionary<string, string>()
             {

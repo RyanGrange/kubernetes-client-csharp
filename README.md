@@ -1,13 +1,21 @@
 # Kubernetes C# Client
-[![Travis](https://img.shields.io/travis/kubernetes-client/csharp.svg)](https://travis-ci.org/kubernetes-client/csharp)
+
+[![Github Actions Build](https://github.com/kubernetes-client/csharp/actions/workflows/buildtest.yaml/badge.svg)](https://github.com/kubernetes-client/csharp/actions/workflows/buildtest.yaml)
 [![Client Capabilities](https://img.shields.io/badge/Kubernetes%20client-Silver-blue.svg?style=flat&colorB=C0C0C0&colorA=306CE8)](http://bit.ly/kubernetes-client-capabilities-badge)
 [![Client Support Level](https://img.shields.io/badge/kubernetes%20client-beta-green.svg?style=flat&colorA=306CE8)](http://bit.ly/kubernetes-client-support-badge)
 
 # Usage
-[Nuget Package](https://www.nuget.org/packages/KubernetesClient/)
+
+[![KubernetesClient](https://img.shields.io/nuget/v/KubernetesClient)](https://www.nuget.org/packages/KubernetesClient/)
 
 ```sh
 dotnet add package KubernetesClient
+```
+
+## Generate with Visual Studio
+
+```
+dotnet msbuild /Restore /t:SlnGen kubernetes-client.proj
 ```
 
 ## Authentication/Configuration
@@ -20,14 +28,11 @@ You should also be able to authenticate with the in-cluster service
 account using the `InClusterConfig` function shown below.
 
 ## Monitoring
-There is optional built-in metric generation for prometheus client metrics.
-The exported metrics are:
+Metrics are built in to HttpClient using System.Diagnostics.DiagnosticsSource.
+https://learn.microsoft.com/en-us/dotnet/core/diagnostics/built-in-metrics-system-net
 
-* `k8s_dotnet_request_total` - Counter of request, broken down by HTTP Method
-* `k8s_dotnet_response_code_total` - Counter of responses, broken down by HTTP Method and response code
-* `k8s_request_latency_seconds` - Latency histograms broken down by method, api group, api version and resource kind
-
-There is an example integrating these monitors in the examples/prometheus directory.
+There are many ways these metrics can be consumed/exposed but that decision is up to the application, not KubernetesClient itself.
+https://learn.microsoft.com/en-us/dotnet/core/diagnostics/metrics-collection
 
 ## Sample Code
 
@@ -48,10 +53,10 @@ var client = new Kubernetes(config);
 
 ### Listing Objects
 ```c#
-var namespaces = client.ListNamespace();
+var namespaces = client.CoreV1.ListNamespace();
 foreach (var ns in namespaces.Items) {
     Console.WriteLine(ns.Metadata.Name);
-    var list = client.ListNamespacedPod(ns.Metadata.Name);
+    var list = client.CoreV1.ListNamespacedPod(ns.Metadata.Name);
     foreach (var item in list.Items)
     {
         Console.WriteLine(item.Metadata.Name);
@@ -69,10 +74,10 @@ var ns = new V1Namespace
     }
 };
 
-var result = client.CreateNamespace(ns);
+var result = client.CoreV1.CreateNamespace(ns);
 Console.WriteLine(result);
 
-var status = client.DeleteNamespace(ns.Metadata.Name, new V1DeleteOptions());
+var status = client.CoreV1.DeleteNamespace(ns.Metadata.Name, new V1DeleteOptions());
 ```
 
 ## Examples
@@ -96,7 +101,7 @@ var config = KubernetesClientConfiguration.BuildConfigFromConfigFile();
 var client = new Kubernetes(config);
 ```
 
-Not all auth providers are supported at moment [#91](https://github.com/kubernetes-client/csharp/issues/91#issuecomment-362920478). You can still connect to a cluster by starting the proxy command:
+Not all auth providers are supported at the moment [#91](https://github.com/kubernetes-client/csharp/issues/91#issuecomment-362920478). You can still connect to a cluster by starting the proxy command:
 
 ```bash
 $ kubectl proxy
@@ -113,7 +118,7 @@ Notice that this is a workaround and is not recommended for production use.
 
 ## Testing
 
-The project uses [XUnit](https://xunit.github.io) as unit testing framework.
+The project uses [XUnit](https://github.com/xunit/xunit) as unit testing framework.
 
 To run the tests:
 
@@ -147,21 +152,39 @@ ${GEN_DIR}/openapi/csharp.sh ${REPO_DIR}/src/KubernetesClient ${REPO_DIR}/csharp
 
 # Version Compatibility
 
-| SDK Version | Kubernetes Version | .NET Targeting                        |
-|-------------|--------------------|---------------------------------------|
-| 7.0         | 1.23               | netstandard2.1;net5.0;net6.0          |
-| 6.0         | 1.22               | netstandard2.1;net5.0                 |
-| 5.0         | 1.21               | netstandard2.1;net5                   |
-| 4.0         | 1.20               | netstandard2.0;netstandard2.1         |
-| 3.0         | 1.19               | netstandard2.0;net452                 |
-| 2.0         | 1.18               | netstandard2.0;net452                 |
-| 1.6         | 1.16               | netstandard1.4;netstandard2.0;net452; |
-| 1.4         | 1.13               | netstandard1.4;net451                 |
-| 1.3         | 1.12               | netstandard1.4;net452                 |
+| SDK Version | Kubernetes Version | .NET Targeting                                      |
+|-------------|--------------------|-----------------------------------------------------|
+| 14.0        | 1.30               | net6.0;net8.0;net48*;netstandard2.0*         |
+| 13.0        | 1.29               | net6.0;net7.0;net8.0;net48*;netstandard2.0*         |
+| 12.0        | 1.28               | net6.0;net7.0;net48*;netstandard2.0*                |
+| 11.0        | 1.27               | net6.0;net7.0;net48*;netstandard2.0*                |
+| 10.0        | 1.26               | net6.0;net7.0;net48*;netstandard2.0*                |
+| 9.1         | 1.25               | netstandard2.1;net6.0;net7.0;net48*;netstandard2.0* |
+| 9.0         | 1.25               | netstandard2.1;net5.0;net6.0;net48*;netstandard2.0* |
+| 8.0         | 1.24               | netstandard2.1;net5.0;net6.0;net48*;netstandard2.0* |
+| 7.2         | 1.23               | netstandard2.1;net5.0;net6.0;net48*;netstandard2.0* |
+| 7.0         | 1.23               | netstandard2.1;net5.0;net6.0                        |
+| 6.0         | 1.22               | netstandard2.1;net5.0                               |
+| 5.0         | 1.21               | netstandard2.1;net5                                 |
+| 4.0         | 1.20               | netstandard2.0;netstandard2.1                       |
+| 3.0         | 1.19               | netstandard2.0;net452                               |
+| 2.0         | 1.18               | netstandard2.0;net452                               |
+| 1.6         | 1.16               | netstandard1.4;netstandard2.0;net452;               |
+| 1.4         | 1.13               | netstandard1.4;net451                               |
+| 1.3         | 1.12               | netstandard1.4;net452                               |
 
  * Starting from `2.0`, [dotnet sdk versioning](https://github.com/kubernetes-client/csharp/issues/400) adopted
  * `Kubernetes Version` here means the version sdk models and apis were generated from
- * Kubernetes api server guarantees the compatibility with `n-2` version. for exmaple, 1.19 based sdk should work with 1.21 cluster, but no guarantee works with 1.22 cluster. see also <https://kubernetes.io/releases/version-skew-policy/>
+ * Kubernetes api server guarantees the compatibility with `n-2` (`n-3` after 1.28) version. for example:
+   - 1.19 based sdk should work with 1.21 cluster, but not guaranteed to work with 1.22 cluster.<br>
+
+    and vice versa:
+   - 1.21 based sdk should work with 1.19 cluster, but not guaranteed to work with 1.18 cluster.<br>
+Note: in practice, the sdk might work with much older clusters, at least for the more stable functionality. However, it is not guaranteed past the `n-2` (or `n-3` after 1.28 ) version. See [#1511](https://github.com/kubernetes-client/csharp/issues/1511) for additional details.<br>
+
+    see also <https://kubernetes.io/releases/version-skew-policy/>
+ * Fixes (including security fixes) are not back-ported automatically to older sdk versions. However, contributions from the community are welcomed 😊; See [Contributing](#contributing) for instructions on how to contribute.
+ * `*` `KubernetesClient.Classic`: netstandard2.0 and net48 are supported with limited features
 
 
 ## Contributing
